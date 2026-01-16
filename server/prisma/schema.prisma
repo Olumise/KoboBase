@@ -1,0 +1,247 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              String   @id
+  name            String
+  email           String
+  emailVerified   Boolean  @default(false) @map("email_verified")
+  image           String?
+  defaultCurrency String   @default("NGN") @map("default_currency") @db.VarChar(3)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  sessions              Session[]
+  accounts              Account[]
+  receipts              Receipt[]
+  transactions          Transaction[]
+  clarificationSessions ClarificationSession[]
+  categories            Category[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Receipt {
+  id               String                       @id @default(uuid())
+  userId           String                       @map("user_id")
+  fileUrl          String                       @map("file_url") @db.VarChar(500)
+  fileType         String                       @map("file_type") @db.VarChar(10)
+  fileSize         Int?                         @map("file_size")
+  rawOcrText       String?                      @map("raw_ocr_text") @db.Text
+  ocrConfidence    Decimal?                     @map("ocr_confidence") @db.Decimal(5, 2)
+  processingStatus String                       @default("pending") @map("processing_status") @db.VarChar(20)
+  uploadedAt       DateTime                     @default(now()) @map("uploaded_at")
+  processedAt      DateTime?                    @map("processed_at")
+  embedding        Unsupported("vector(1536)")?
+  summary          String?                      @db.Text
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+  @@index([processingStatus])
+  @@map("receipts")
+}
+
+model Transaction {
+  id        String  @id @default(uuid())
+  userId    String  @map("user_id")
+  receiptId String? @map("receipt_id")
+  contactId String? @map("sender_id")
+
+  amount            Decimal                      @db.Decimal(15, 2)
+  currency          String                       @default("NGN") @db.VarChar(3)
+  transactionType   TransactionType              @map("transaction_type")
+  transactionDate   DateTime                     @map("transaction_date") @db.Date
+  isSelfTransaction Boolean                      @default(false) @map("is_self_transaction")
+  category          String?                      @db.VarChar(50)
+  subcategory       String?                      @db.VarChar(50)
+  description       String?                      @db.Text
+  paymentMethod     String?                      @map("payment_method") @db.VarChar(50)
+  referenceNumber   String?                      @map("reference_number") @db.VarChar(100)
+  aiConfidence      Decimal?                     @map("ai_confidence") @db.Decimal(5, 2)
+  needsReview       Boolean                      @default(false) @map("needs_review")
+  isRecurring       Boolean                      @default(false) @map("is_recurring")
+  status            TransactionStatus            @default(CONFIRMED)
+  embedding         Unsupported("vector(1536)")?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receipt               Receipt?               @relation(fields: [receiptId], references: [id])
+  contact               Contact?               @relation(fields: [contactId], references: [id])
+  clarificationSessions ClarificationSession[]
+
+  @@index([userId])
+  @@index([transactionDate])
+  @@index([category])
+  @@index([transactionType])
+  @@index([contactId])
+  @@map("transactions")
+}
+
+model ClarificationSession {
+  id                String    @id @default(uuid())
+  transactionId     String    @map("transaction_id")
+  userId            String    @map("user_id")
+  status            String    @default("active") @db.VarChar(20)
+  questionsAsked    Int       @default(0) @map("questions_asked")
+  initialExtraction Json?     @map("initial_extraction")
+  ambiguityReasons  String[]  @map("ambiguity_reasons")
+  startedAt         DateTime  @default(now()) @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+
+  transaction           Transaction            @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clarificationMessages ClarificationMessage[]
+
+  @@index([transactionId])
+  @@index([status])
+  @@map("clarification_sessions")
+}
+
+model ClarificationMessage {
+  id            String   @id @default(uuid())
+  sessionId     String   @map("session_id")
+  role          String   @db.VarChar(10)
+  messageText   String   @map("message_text") @db.Text
+  messageOrder  Int      @map("message_order")
+  reasoning     String?  @db.Text
+  extractedInfo Json?    @map("extracted_info")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  session ClarificationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("clarification_messages")
+}
+
+model Category {
+  id               String   @id @default(uuid())
+  userId           String?  @map("user_id")
+  name             String   @db.VarChar(50)
+  icon             String?  @db.VarChar(50)
+  color            String?  @db.VarChar(7)
+  isSystemCategory Boolean  @default(false) @map("is_system_category")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user    User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  senders Contact[]
+
+  @@unique([name, userId])
+  @@index([userId])
+  @@map("categories")
+}
+
+model Contact {
+  id                    String       @id @default(uuid())
+  name                  String
+  normalizedName        String?      @map("normalized_name")
+  ContactType           ContactType? @map("sender_type")
+  categoryId            String?      @map("category_id")
+  typicalAmountRangeMin Decimal?     @map("typical_amount_range_min") @db.Decimal(15, 2)
+  typicalAmountRangeMax Decimal?     @map("typical_amount_range_max") @db.Decimal(15, 2)
+  nameVariations        String[]     @map("name_variations")
+  transactionCount      Int          @default(0) @map("transaction_count")
+  lastTransactionDate   DateTime?    @map("last_transaction_date") @db.Date
+  notes                 String?      @db.Text
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+
+  defaultCategory Category?     @relation(fields: [categoryId], references: [id])
+  transactions    Transaction[]
+
+  @@index([normalizedName])
+  @@map("senders")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime @map("expires_at")
+  token     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+enum TransactionType {
+  INCOME     @map("income")
+  EXPENSE    @map("expense")
+  TRANSFER   @map("transfer")
+  REFUND     @map("refund")
+  FEE        @map("fee")
+  ADJUSTMENT @map("adjustment")
+
+  @@map("transaction_type")
+}
+
+enum TransactionStatus {
+  PENDING   @map("pending")
+  CONFIRMED @map("confirmed")
+  FAILED    @map("failed")
+  CANCELLED @map("cancelled")
+  DISPUTED  @map("disputed")
+
+  @@map("transaction_status")
+}
+
+enum ContactType {
+  PERSON   @map("person")
+  MERCHANT @map("merchant")
+  BANK     @map("bank")
+  PLATFORM @map("platform")
+  WALLET   @map("wallet")
+  SYSTEM   @map("system")
+
+  @@map("contact_type")
+}
