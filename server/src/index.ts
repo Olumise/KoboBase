@@ -1,12 +1,16 @@
 import "dotenv/config";
 import express from "express";
-import testRouter from "./routes/testCall";
+import { errorHandler } from "./middlewares/errorHandler";
+import aiRouter from "./routes/ai.router";
 const app = express();
 const PORT = process.env.PORT;
 
 app.use(express.json());
-app.use("/test", testRouter);
 
+app.use('/ai',aiRouter)
+
+
+app.use(errorHandler)
 app.listen(PORT, () => {
 	console.log(`Server is running in Port ${PORT}`);
 });
