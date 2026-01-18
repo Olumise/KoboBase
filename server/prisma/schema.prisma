@@ -42,8 +42,9 @@ model Receipt {
   embedding        Unsupported("vector(1536)")?
   summary          String?                      @db.Text
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions          Transaction[]
+  clarificationSessions ClarificationSession[]
 
   @@index([userId])
   @@index([processingStatus])
@@ -89,34 +90,32 @@ model Transaction {
 }
 
 model ClarificationSession {
-  id                String    @id @default(uuid())
-  transactionId     String    @map("transaction_id")
-  userId            String    @map("user_id")
-  status            String    @default("active") @db.VarChar(20)
-  questionsAsked    Int       @default(0) @map("questions_asked")
-  initialExtraction Json?     @map("initial_extraction")
-  ambiguityReasons  String[]  @map("ambiguity_reasons")
-  startedAt         DateTime  @default(now()) @map("started_at")
-  completedAt       DateTime? @map("completed_at")
+  id            String    @id @default(uuid())
+  receiptId     String    @map("receipt_id")
+  transactionId String?   @map("transaction_id")
+  userId        String    @map("user_id")
+  status        String    @default("active") @db.VarChar(20)
+  extractedData Json?     @map("extracted_data")
+  startedAt     DateTime  @default(now()) @map("started_at")
+  completedAt   DateTime? @map("completed_at")
 
-  transaction           Transaction            @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  receipt               Receipt                @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  transaction           Transaction?           @relation(fields: [transactionId], references: [id])
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   clarificationMessages ClarificationMessage[]
 
-  @@index([transactionId])
+  @@index([receiptId])
+  @@index([userId])
   @@index([status])
   @@map("clarification_sessions")
 }
 
 model ClarificationMessage {
-  id            String   @id @default(uuid())
-  sessionId     String   @map("session_id")
-  role          String   @db.VarChar(10)
-  messageText   String   @map("message_text") @db.Text
-  messageOrder  Int      @map("message_order")
-  reasoning     String?  @db.Text
-  extractedInfo Json?    @map("extracted_info")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  sessionId   String   @map("session_id")
+  role        String   @db.VarChar(10)
+  messageText String   @map("message_text") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
 
   session ClarificationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 

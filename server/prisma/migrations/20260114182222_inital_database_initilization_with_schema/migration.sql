@@ -1,3 +1,6 @@
+-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- CreateEnum
 CREATE TYPE "transaction_type" AS ENUM ('income', 'expense', 'transfer', 'refund', 'fee', 'adjustment');
 

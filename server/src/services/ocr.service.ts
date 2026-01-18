@@ -15,7 +15,7 @@ export const googleImageOCR = async (fileBuffer: Buffer, mimeType: string) => {
 			},
 		},
 		{
-			text: "Extract all the texts from this image and return in json format, if the image does not have text, return a text informing the user that there is no extractable text in the image",
+			text: "Extract all the texts from this image and return in markdown format, if the image does not have text, return a text informing the user that there is no extractable text in the image",
 		},
 	];
 	const response = await ai.models.generateContent({
