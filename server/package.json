@@ -34,7 +34,8 @@
 	},
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
-		"start": "tsx watch ./src/index.ts"
+		"start": "tsx watch ./src/index.ts",
+		"prisma-seed": "tsx prisma/seed.ts"
 	},
 	"keywords": [],
 	"author": "",
