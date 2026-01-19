@@ -23,6 +23,7 @@ model User {
   transactions          Transaction[]
   clarificationSessions ClarificationSession[]
   categories            Category[]
+  bankAccounts          BankAccount[]
 
   @@unique([email])
   @@map("user")
@@ -55,26 +56,26 @@ model Receipt {
 }
 
 model Transaction {
-  id        String  @id @default(uuid())
-  userId    String  @map("user_id")
-  receiptId String? @map("receipt_id")
-  contactId String? @map("sender_id")
+  id                 String  @id @default(uuid())
+  userId             String  @map("user_id")
+  receiptId          String? @map("receipt_id")
+  contactId          String? @map("sender_id")
+  categoryId         String? @map("category_id")
+  userBankAccountId  String? @map("user_bank_account_id")
+  toBankAccountId    String? @map("to_bank_account_id")
 
   amount            Decimal                      @db.Decimal(15, 2)
   currency          String                       @default("NGN") @db.VarChar(3)
   transactionType   TransactionType              @map("transaction_type")
   transactionDate   DateTime                     @map("transaction_date") @db.Date
   isSelfTransaction Boolean                      @default(false) @map("is_self_transaction")
-  category          String?                      @db.VarChar(50)
   subcategory       String?                      @db.VarChar(50)
   description       String?                      @db.Text
   paymentMethod     String?                      @map("payment_method") @db.VarChar(50)
   referenceNumber   String?                      @map("reference_number") @db.VarChar(100)
   aiConfidence      Decimal?                     @map("ai_confidence") @db.Decimal(5, 2)
-  needsReview       Boolean                      @default(false) @map("needs_review")
-  isRecurring       Boolean                      @default(false) @map("is_recurring")
   status            TransactionStatus            @default(CONFIRMED)
-  embedding         Unsupported("vector(1536)")?
+
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -82,13 +83,18 @@ model Transaction {
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   receipt               Receipt?               @relation(fields: [receiptId], references: [id])
   contact               Contact?               @relation(fields: [contactId], references: [id])
+  category              Category?              @relation(fields: [categoryId], references: [id])
+  userBankAccount       BankAccount?           @relation("PrimaryAccount", fields: [userBankAccountId], references: [id])
+  toBankAccount         BankAccount?           @relation("DestinationAccount", fields: [toBankAccountId], references: [id])
   clarificationSessions ClarificationSession[]
 
   @@index([userId])
   @@index([transactionDate])
-  @@index([category])
+  @@index([categoryId])
   @@index([transactionType])
   @@index([contactId])
+  @@index([userBankAccountId])
+  @@index([toBankAccountId])
   @@map("transactions")
 }
 
@@ -140,8 +146,9 @@ model Category {
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
 
-  user    User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  senders Contact[]
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  senders      Contact[]
+  transactions Transaction[]
 
   @@unique([name, userId])
   @@index([userId])
@@ -220,6 +227,30 @@ model Verification {
   @@map("verification")
 }
 
+model BankAccount {
+  id            String       @id @default(uuid())
+  userId        String       @map("user_id")
+  accountName   String       @map("account_name") @db.VarChar(100)
+  accountNumber String?      @map("account_number") @db.VarChar(20)
+  bankName      String       @map("bank_name") @db.VarChar(100)
+  accountType   AccountType? @map("account_type")
+  currency      String       @default("NGN") @db.VarChar(3)
+  nickname      String?      @db.VarChar(50)
+  isActive      Boolean      @default(true) @map("is_active")
+  isPrimary     Boolean      @default(false) @map("is_primary")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  primaryTransactions     Transaction[] @relation("PrimaryAccount")
+  destinationTransactions Transaction[] @relation("DestinationAccount")
+
+  @@unique([userId, accountNumber, bankName])
+  @@index([userId])
+  @@index([bankName])
+  @@map("bank_accounts")
+}
+
 enum TransactionType {
   INCOME     @map("income")
   EXPENSE    @map("expense")
@@ -250,4 +281,14 @@ enum ContactType {
   SYSTEM   @map("system")
 
   @@map("contact_type")
+}
+
+enum AccountType {
+  SAVINGS @map("savings")
+  CURRENT @map("current")
+  WALLET  @map("wallet")
+  CARD    @map("card")
+  OTHER   @map("other")
+
+  @@map("account_type")
 }
