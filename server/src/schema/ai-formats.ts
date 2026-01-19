@@ -9,7 +9,7 @@ export const TransactionReceiptSchema = z.object({
 	description: z.string(),
 	category: z.string(),
 	sender_name: z.string(),
-	sender_bank:z.string(),
+	sender_bank: z.string(),
 	receiver_name: z.string(),
 	receiver_bank: z.string(),
 	receiver_account_number: z.string(),
@@ -32,12 +32,25 @@ export const TransactionReceiptAiResponseSchema = z.object({
 	questions: z
 		.array(z.string())
 		.nullable()
-		.describe("Questions to clarify missing fields or fields that is unclear, null if complete"),
+		.describe(
+			"Questions to clarify missing fields or fields that is unclear, null if complete"
+		),
 	missing_fields: z
 		.array(z.string())
 		.nullable()
-		.describe("List of fields that are missing or need more clarification, null if complete"),
+		.describe(
+			"List of fields that are missing or need more clarification, null if complete"
+		),
 	confidence_score: z
 		.number()
-		.describe("How confident are you about this result on a scale 0 to 1. Must be 1 if all fields present, less than 1 if any missing"),
+		.describe(
+			"How confident are you about this result on a scale 0 to 1. Must be 1 if all fields present, less than 1 if any missing"
+		),
 });
+
+export const OcrExtractionResultSchema = z.object({
+	extracted: z.boolean(),
+	failure_reason: z.string().nullable(),
+	extracted_text: z.string().nullable(),
+});
+export type ExtractionResultSchema = z.infer<typeof OcrExtractionResultSchema>;

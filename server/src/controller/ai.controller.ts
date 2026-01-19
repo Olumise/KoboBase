@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { getPDFInfo, googleImageOCR, parsePDFText } from "../services/ocr.service";
+import { getPDFInfo, googleOCR, parsePDFText } from "../services/ocr.service";
 import { AppError } from "../middlewares/errorHandler";
 
 export const extractImageController = async (
@@ -13,7 +13,7 @@ export const extractImageController = async (
 		throw new AppError(400, "No file uploaded!", "extractImageController");
 	}
 	try {
-		const content = await googleImageOCR(fileBuffer, mimeType);
+		const content = await googleOCR(fileBuffer, mimeType);
 		res.send(content);
 	} catch (err) {
 		next(err);

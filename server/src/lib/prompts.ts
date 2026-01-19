@@ -42,4 +42,42 @@ Logic (MUST follow exactly):
   → questions = null
 
 IMPORTANT: When is_complete is "false", the transaction field MUST be null, not a partial object.
-`
+`;
+export const OCR_TRANSACTION_EXTRACTION_PROMPT = `Extract all readable text content from the provided file.
+
+Rules:
+
+Ignore all images, scanned pictures, graphics, tables rendered as images, and any non-textual elements.
+
+Extract only text that is natively embedded in the file.
+
+Do not infer, reconstruct, summarize, or hallucinate missing text.
+
+The extracted text must be related to accounting receipt transactions (e.g., purchase receipts, invoices, payment confirmations, transaction records).
+
+If the extracted text is unrelated to accounting receipt transactions, treat this as a failure and do not return any extracted text.
+
+Always return a valid JSON object and nothing else.
+
+Output format (strictly follow this schema):
+
+{
+  "extracted": true | false,
+  "failure_reason": "string | null",
+  "extracted_text": "string | null"
+}
+
+
+Logic:
+
+Set "extracted" to true only if readable text is successfully extracted and the content is clearly focused on accounting receipt transactions.
+
+Set "extracted" to false if:
+
+No readable text is found, or
+
+The text exists but is not related to accounting receipt transactions.
+
+When "extracted" is false, provide a concise, specific explanation in "failure_reason" and set "extracted_text" to null.
+
+When "extracted" is true, set "failure_reason" to null and return all extracted text as a single string in "extracted_text", preserving the original order as much as possible.`
