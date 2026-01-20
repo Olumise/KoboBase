@@ -1,6 +1,7 @@
 import { AppError } from "../middlewares/errorHandler";
 import { toolsByName, ToolName } from "../tools";
-import { TransactionType, ContactType } from "../../generated/prisma/client";
+import { TransactionType } from "../../generated/prisma/client";
+import { ContactType } from "../constants/types";
 import { CONTACT_TYPE_KEYWORDS } from "../lib/contactTypeKeywords";
 import * as bankAccountService from "./bankAccount.service";
 import * as transactionValidatorService from "./transactionValidator.service";
@@ -144,17 +145,17 @@ export const enrichTransactionWithTools = async (
 			overall: 0,
 		};
 
-		if (transactionData.categoryName) {
-			const categoryResult = await executeAITool("get_or_create_category", {
-				categoryName: transactionData.categoryName,
+		if (transactionData.categoryName || transactionData.description) {
+			const categoryResult = await executeAITool("get_category", {
+				transactionDescription: transactionData.description || transactionData.categoryName || "",
 				userId,
 			});
 
 			toolResults.category = categoryResult;
 
-			if (categoryResult.success && categoryResult.data) {
-				enrichedData.categoryId = categoryResult.data.id;
-				confidence.category = categoryResult.data.matchConfidence || 0;
+			if (categoryResult.success && categoryResult.data?.category) {
+				enrichedData.categoryId = categoryResult.data.category.id;
+				confidence.category = categoryResult.data.category.matchConfidence || 0;
 			}
 		}
 

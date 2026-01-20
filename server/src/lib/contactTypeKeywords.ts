@@ -1,7 +1,7 @@
-import { ContactType } from "../../generated/prisma/client";
+import { ContactType, ContactTypeValue } from "../constants/types";
 
 export interface ContactTypeKeywords {
-	type: ContactType;
+	type: ContactTypeValue;
 	keywords: string[];
 	priority: number;
 }
@@ -50,7 +50,7 @@ export const CONTACT_TYPE_KEYWORDS: ContactTypeKeywords[] = [
 ];
 
 export const addCustomKeywords = (
-	type: ContactType,
+	type: ContactTypeValue,
 	keywords: string[]
 ): void => {
 	const existingEntry = CONTACT_TYPE_KEYWORDS.find(entry => entry.type === type);
@@ -70,12 +70,12 @@ export const addCustomKeywords = (
 	}
 };
 
-export const getKeywordsForType = (type: ContactType): string[] => {
+export const getKeywordsForType = (type: ContactTypeValue): string[] => {
 	const entry = CONTACT_TYPE_KEYWORDS.find(entry => entry.type === type);
 	return entry ? entry.keywords : [];
 };
 
-export const getAllContactTypes = (): ContactType[] => {
+export const getAllContactTypes = (): ContactTypeValue[] => {
 	return CONTACT_TYPE_KEYWORDS
 		.sort((a, b) => a.priority - b.priority)
 		.map(entry => entry.type);

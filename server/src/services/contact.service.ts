@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../middlewares/errorHandler";
-import { ContactType } from "../../generated/prisma/client";
+import { ContactType, ContactTypeValue } from "../constants/types";
 import { CONTACT_TYPE_KEYWORDS } from "../lib/contactTypeKeywords";
 
 function generateNameVariations(name: string): string[] {
@@ -44,7 +44,7 @@ function generateNameVariations(name: string): string[] {
 	return Array.from(variations).filter(v => v.length > 0);
 }
 
-function determineContactType(bankName?: string, description?: string): ContactType {
+function determineContactType(bankName?: string, description?: string): ContactTypeValue {
 	const searchText = `${bankName || ''} ${description || ''}`.toLowerCase();
 
 	for (const entry of CONTACT_TYPE_KEYWORDS) {
@@ -64,7 +64,7 @@ interface ContactMatchResult {
 	id: string;
 	name: string;
 	normalizedName: string | null;
-	contactType: ContactType | null;
+	contactType: ContactTypeValue | null;
 	categoryId: string | null;
 	nameVariations: string[];
 	transactionCount: number;
@@ -207,7 +207,7 @@ export const findContact = async (
 
 interface CreateContactInput {
 	name: string;
-	contactType?: ContactType;
+	contactType?: ContactTypeValue;
 	categoryId?: string;
 	bankName?: string;
 	description?: string;
@@ -361,7 +361,7 @@ interface UpdateContactInput {
 	contactId: string;
 	updates: {
 		name?: string;
-		contactType?: ContactType;
+		contactType?: ContactTypeValue;
 		categoryId?: string;
 		typicalAmountRangeMin?: number;
 		typicalAmountRangeMax?: number;

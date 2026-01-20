@@ -158,19 +158,19 @@ model Category {
 }
 
 model Contact {
-  id                    String       @id @default(uuid())
+  id                    String    @id @default(uuid())
   name                  String
-  normalizedName        String?      @map("normalized_name")
-  ContactType           ContactType? @map("sender_type")
-  categoryId            String?      @map("category_id")
-  typicalAmountRangeMin Decimal?     @map("typical_amount_range_min") @db.Decimal(15, 2)
-  typicalAmountRangeMax Decimal?     @map("typical_amount_range_max") @db.Decimal(15, 2)
-  nameVariations        String[]     @map("name_variations")
-  transactionCount      Int          @default(0) @map("transaction_count")
-  lastTransactionDate   DateTime?    @map("last_transaction_date") @db.Date
-  notes                 String?      @db.Text
-  createdAt             DateTime     @default(now()) @map("created_at")
-  updatedAt             DateTime     @updatedAt @map("updated_at")
+  normalizedName        String?   @map("normalized_name")
+  ContactType           String?   @map("sender_type") @db.VarChar(20)
+  categoryId            String?   @map("category_id")
+  typicalAmountRangeMin Decimal?  @map("typical_amount_range_min") @db.Decimal(15, 2)
+  typicalAmountRangeMax Decimal?  @map("typical_amount_range_max") @db.Decimal(15, 2)
+  nameVariations        String[]  @map("name_variations")
+  transactionCount      Int       @default(0) @map("transaction_count")
+  lastTransactionDate   DateTime? @map("last_transaction_date") @db.Date
+  notes                 String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   defaultCategory Category?     @relation(fields: [categoryId], references: [id])
   transactions    Transaction[]
@@ -230,18 +230,18 @@ model Verification {
 }
 
 model BankAccount {
-  id            String       @id @default(uuid())
-  userId        String       @map("user_id")
-  accountName   String       @map("account_name") @db.VarChar(100)
-  accountNumber String?      @map("account_number") @db.VarChar(20)
-  bankName      String       @map("bank_name") @db.VarChar(100)
-  accountType   AccountType? @map("account_type")
-  currency      String       @default("NGN") @db.VarChar(3)
-  nickname      String?      @db.VarChar(50)
-  isActive      Boolean      @default(true) @map("is_active")
-  isPrimary     Boolean      @default(false) @map("is_primary")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  accountName   String    @map("account_name") @db.VarChar(100)
+  accountNumber String?   @map("account_number") @db.VarChar(20)
+  bankName      String    @map("bank_name") @db.VarChar(100)
+  accountType   String?   @map("account_type") @db.VarChar(20)
+  currency      String    @default("NGN") @db.VarChar(3)
+  nickname      String?   @db.VarChar(50)
+  isActive      Boolean   @default(true) @map("is_active")
+  isPrimary     Boolean   @default(false) @map("is_primary")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   primaryTransactions     Transaction[] @relation("PrimaryAccount")
@@ -274,23 +274,3 @@ enum TransactionStatus {
   @@map("transaction_status")
 }
 
-enum ContactType {
-  PERSON   @map("person")
-  MERCHANT @map("merchant")
-  BANK     @map("bank")
-  PLATFORM @map("platform")
-  WALLET   @map("wallet")
-  SYSTEM   @map("system")
-
-  @@map("contact_type")
-}
-
-enum AccountType {
-  SAVINGS @map("savings")
-  CURRENT @map("current")
-  WALLET  @map("wallet")
-  CARD    @map("card")
-  OTHER   @map("other")
-
-  @@map("account_type")
-}

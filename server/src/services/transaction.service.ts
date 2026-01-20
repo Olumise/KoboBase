@@ -1,18 +1,33 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { TransactionReceiptAiResponseSchema } from "../schema/ai-formats";
-import { RECEIPT_TRANSACTION_SYSTEM_PROMPT, RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS } from "../lib/prompts";
+import {
+	RECEIPT_TRANSACTION_SYSTEM_PROMPT,
+	RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS,
+} from "../lib/prompts";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../middlewares/errorHandler";
-import { allAITools } from "../tools";
-import { shouldRequireConfirmation, generateConfirmationQuestion } from "../config/toolConfirmations";
+import {
+	allAITools,
+	getBankAccountsTool,
+	getCategoryTool,
+	getOrCreateContactTool,
+	validateTransactionTypeTool,
+} from "../tools";
+import {
+	shouldRequireConfirmation,
+	generateConfirmationQuestion,
+} from "../config/toolConfirmations";
 import { executeAITool } from "./aiToolExecutor.service";
 
 const OpenAIllm = new ChatOpenAI({
-	model: "gpt-4o",
+	model: "gpt-4.1",
 	temperature: 0,
 });
 
-export const generateTransaction = async (input: string, clarificationId: string) => {
+export const generateTransaction = async (
+	input: string,
+	clarificationId: string
+) => {
 	const transactionllm = OpenAIllm.withStructuredOutput(
 		TransactionReceiptAiResponseSchema,
 		{ name: "extract_transaction", strict: true }
@@ -104,19 +119,19 @@ export const initiateTransactionFromReceipt = async (
 
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
-		select: { id: true, name: true, defaultCurrency: true }
+		select: { id: true, name: true, defaultCurrency: true },
 	});
 
 	if (!user) {
 		throw new AppError(404, "User not found", "initiateTransactionFromReceipt");
 	}
 
-	const llmWithTools = OpenAIllm.bindTools(allAITools, {
-		tool_choice: "auto",
-	});
+	const llmWithTools = OpenAIllm.bindTools(allAITools, {});
 
-	const systemPrompt = RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS
-		.replace("{userId}", user.id)
+	const systemPrompt = RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS.replace(
+		"{userId}",
+		user.id
+	)
 		.replace("{userName}", user.name)
 		.replace("{defaultCurrency}", user.defaultCurrency);
 
@@ -127,13 +142,14 @@ export const initiateTransactionFromReceipt = async (
 		},
 		{
 			role: "user",
-			content: "Please extract all transaction details from this receipt and call the appropriate tools.",
+			content:
+				"Please extract all transaction details from this receipt and call the appropriate tools.",
 		},
 	];
 
 	const aiResponse = await llmWithTools.invoke(initialPrompt);
-	console.log('content:', aiResponse.content)
-	console.log('tool_calls:', aiResponse.tool_calls)
+	console.log("content:", aiResponse.content);
+	console.log("tool_calls:", aiResponse.tool_calls);
 
 	const toolCalls = aiResponse.tool_calls || [];
 
@@ -163,8 +179,15 @@ export const initiateTransactionFromReceipt = async (
 		autoToolResults[toolCall.name] = result;
 	}
 
-	console.log('autoToolResults:', JSON.stringify(autoToolResults, null, 2));
-
+	console.log("autoToolResults:", JSON.stringify(autoToolResults, null, 2));
+	// return {
+	// 	auto: autoExecuteTools,
+	// 	confirmation: confirmationTools,
+	// 	toolresults: autoToolResults,
+	// 	questions: confirmationTools.map((tc) =>
+	// 		generateConfirmationQuestion(tc.name, tc.args)
+	// 	),
+	// };
 	if (confirmationTools.length > 0) {
 		const clarificationSession = await prisma.clarificationSession.create({
 			data: {
@@ -177,7 +200,7 @@ export const initiateTransactionFromReceipt = async (
 			},
 		});
 
-		const questions = confirmationTools.map(tc =>
+		const questions = confirmationTools.map((tc) =>
 			generateConfirmationQuestion(tc.name, tc.args)
 		);
 
@@ -219,16 +242,19 @@ export const initiateTransactionFromReceipt = async (
 	const finalPrompt = [
 		{
 			role: "system",
-			content: `${systemPrompt}\n\nReceipt OCR Text:\n${receipt.rawOcrText}\n\nTool Results:\n${JSON.stringify(autoToolResults, null, 2)}`,
+			content: `${systemPrompt}\n\nReceipt OCR Text:\n${
+				receipt.rawOcrText
+			}\n\nTool Results:\n${JSON.stringify(autoToolResults, null, 2)}`,
 		},
 		{
 			role: "user",
-			content: "Based on the receipt text and tool results above, please provide the final transaction extraction with all required fields populated. Use the enrichment_data field to include IDs from tool results.",
+			content:
+				"Based on the receipt text and tool results above, please provide the final transaction extraction with all required fields populated. Use the enrichment_data field to include IDs from tool results.",
 		},
 	];
 
 	const parsedResponse = await llmWithStructuredOutput.invoke(finalPrompt);
-	console.log('parsedResponse:', JSON.stringify(parsedResponse, null, 2));
+	console.log("parsedResponse:", JSON.stringify(parsedResponse, null, 2));
 
 	if (parsedResponse.is_complete === "false") {
 		const clarificationSession = await prisma.clarificationSession.create({
@@ -271,7 +297,8 @@ export const initiateTransactionFromReceipt = async (
 		contactId: autoToolResults.get_or_create_contact?.data?.id,
 		userBankAccountId: parsedResponse.enrichment_data?.user_bank_account_id,
 		toBankAccountId: parsedResponse.enrichment_data?.to_bank_account_id,
-		isSelfTransaction: parsedResponse.enrichment_data?.is_self_transaction || false,
+		isSelfTransaction:
+			parsedResponse.enrichment_data?.is_self_transaction || false,
 	};
 
 	return {

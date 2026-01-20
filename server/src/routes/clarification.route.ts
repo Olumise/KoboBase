@@ -6,6 +6,7 @@ import {
 	completeClarificationSessionController,
 	getUserClarificationSessionsController,
 	sendClarificationMessageController,
+	handleConfirmationController,
 } from "../controller/clarification.controller";
 
 const clarificationRouter = express();
@@ -15,5 +16,6 @@ clarificationRouter.get("/session/:sessionId", authVerify, getClarificationSessi
 clarificationRouter.patch("/session/:sessionId/complete", authVerify, completeClarificationSessionController);
 clarificationRouter.get("/sessions", authVerify, getUserClarificationSessionsController);
 clarificationRouter.post("/session/:sessionId/message", authVerify, sendClarificationMessageController);
+clarificationRouter.post("/session/:sessionId/confirm", authVerify, handleConfirmationController);
 
 export default clarificationRouter;

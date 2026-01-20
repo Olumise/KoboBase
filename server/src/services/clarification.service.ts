@@ -10,6 +10,7 @@ import { TransactionReceiptAiResponseSchema } from "../schema/ai-formats";
 import { RECEIPT_TRANSACTION_SYSTEM_PROMPT } from "../lib/prompts";
 import { executeAITool } from "./aiToolExecutor.service";
 import { allAITools } from "../tools";
+import { shouldRequireConfirmation, generateConfirmationQuestion } from "../config/toolConfirmations";
 
 export const createClarification = async (
 	data: CreateClarificationSessionType
@@ -338,15 +339,67 @@ export const sendClarificationMessage = async (
 	const aiResponseWithTools = await llmWithTools.invoke(conversationHistory);
 
 	const newToolCalls = aiResponseWithTools.tool_calls || [];
-	const newToolResults: Record<string, any> = {};
+
+	const autoExecuteTools = [];
+	const confirmationTools = [];
 
 	for (const toolCall of newToolCalls) {
+		if (shouldRequireConfirmation(toolCall.name)) {
+			confirmationTools.push(toolCall);
+		} else {
+			autoExecuteTools.push(toolCall);
+		}
+	}
+
+
+	const newToolResults: Record<string, any> = {};
+
+	for (const toolCall of autoExecuteTools) {
 		const result = await executeAITool(toolCall.name as any, toolCall.args);
 		newToolResults[toolCall.name] = result;
 	}
 
 	const allToolResults = { ...existingToolResults, ...newToolResults };
 
+
+	if (confirmationTools.length > 0) {
+		await prisma.clarificationSession.update({
+			where: { id: session.id },
+			data: {
+				status: "pending_confirmation",
+				pendingToolCalls: confirmationTools,
+				toolResults: allToolResults,
+			},
+		});
+
+		const questions = confirmationTools.map(tc =>
+			generateConfirmationQuestion(tc.name, tc.args)
+		);
+
+		await prisma.clarificationMessage.create({
+			data: {
+				sessionId: session.id,
+				role: "assistant",
+				messageText: JSON.stringify({
+					message: aiResponseWithTools.content || "I need your confirmation for some actions.",
+					questions,
+					pendingActions: confirmationTools.length,
+					toolCalls: confirmationTools,
+				}),
+			},
+		});
+
+		return {
+			userMessage: message,
+			needsConfirmation: true,
+			questions,
+			pendingToolCalls: confirmationTools,
+			sessionId: session.id,
+			status: "pending_confirmation",
+		};
+	}
+
+	// Update tool results if any were executed
 	if (Object.keys(newToolResults).length > 0) {
 		await prisma.clarificationSession.update({
 			where: { id: session.id },
@@ -450,8 +503,63 @@ export const handleConfirmationResponse = async (
 		},
 	});
 
+	const OpenAIllm = new ChatOpenAI({
+		model: "gpt-4o",
+		temperature: 0,
+	});
+
+	const allMessages = await prisma.clarificationMessage.findMany({
+		where: { sessionId: session.id },
+		orderBy: { createdAt: "asc" },
+	});
+
+	const finalPrompt = [
+		{
+			role: "system",
+			content: `${RECEIPT_TRANSACTION_SYSTEM_PROMPT}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(newToolResults, null, 2)}`,
+		},
+		...allMessages.map((msg) => ({
+			role: msg.role as "user" | "assistant",
+			content: msg.messageText,
+		})),
+		{
+			role: "user",
+			content: "Based on all the information above and tool results (including the tools I just confirmed), provide the final structured transaction. Extract IDs from tool results and populate enrichment_data fields.",
+		},
+	];
+
+	const transactionllm = OpenAIllm.withStructuredOutput(
+		TransactionReceiptAiResponseSchema,
+		{ name: "extract_transaction", strict: true }
+	);
+
+	const aiResponse = await transactionllm.invoke(finalPrompt);
+
+	await prisma.clarificationMessage.create({
+		data: {
+			sessionId: session.id,
+			role: "assistant",
+			messageText: JSON.stringify(aiResponse),
+		},
+	});
+
+	let enrichedTransaction = null;
+	if (aiResponse.is_complete === "true" && aiResponse.transaction) {
+		enrichedTransaction = {
+			...aiResponse.transaction,
+			categoryId: newToolResults.get_or_create_category?.data?.id,
+			contactId: newToolResults.get_or_create_contact?.data?.id,
+			userBankAccountId: aiResponse.enrichment_data?.user_bank_account_id,
+			toBankAccountId: aiResponse.enrichment_data?.to_bank_account_id,
+			isSelfTransaction: aiResponse.enrichment_data?.is_self_transaction || false,
+		};
+	}
+
 	return {
 		success: true,
 		toolResults: newToolResults,
+		aiResponse: aiResponse,
+		isComplete: aiResponse.is_complete === "true",
+		transaction: enrichedTransaction,
 	};
 };

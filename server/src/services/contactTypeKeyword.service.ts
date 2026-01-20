@@ -1,4 +1,4 @@
-import { ContactType } from "../../generated/prisma/client";
+import { ContactType, ContactTypeValue } from "../constants/types";
 import {
 	CONTACT_TYPE_KEYWORDS,
 	addCustomKeywords,
@@ -7,7 +7,7 @@ import {
 } from "../lib/contactTypeKeywords";
 import { AppError } from "../middlewares/errorHandler";
 
-export const getContactTypeKeywords = (type?: ContactType) => {
+export const getContactTypeKeywords = (type?: ContactTypeValue) => {
 	try {
 		if (type) {
 			const keywords = getKeywordsForType(type);
@@ -37,7 +37,7 @@ export const getContactTypeKeywords = (type?: ContactType) => {
 };
 
 interface AddKeywordsInput {
-	type: ContactType;
+	type: ContactTypeValue;
 	keywords: string[];
 }
 

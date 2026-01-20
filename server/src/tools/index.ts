@@ -1,10 +1,11 @@
-import { getOrCreateCategoryTool } from "./category";
+import { getCategoryTool, createCategoryTool } from "./category";
 import { getOrCreateContactTool } from "./contact";
 import { getBankAccountsTool, createBankAccountTool } from "./bank";
 import { validateTransactionTypeTool } from "./transaction";
 
 export const allAITools = [
-	getOrCreateCategoryTool,
+	getCategoryTool,
+	createCategoryTool,
 	getOrCreateContactTool,
 	getBankAccountsTool,
 	createBankAccountTool,
@@ -12,7 +13,8 @@ export const allAITools = [
 ];
 
 export const toolsByName = {
-	get_or_create_category: getOrCreateCategoryTool,
+	get_category: getCategoryTool,
+	create_category: createCategoryTool,
 	get_or_create_contact: getOrCreateContactTool,
 	get_bank_accounts: getBankAccountsTool,
 	create_bank_account: createBankAccountTool,
@@ -22,7 +24,8 @@ export const toolsByName = {
 export type ToolName = keyof typeof toolsByName;
 
 export {
-	getOrCreateCategoryTool,
+	getCategoryTool,
+	createCategoryTool,
 	getOrCreateContactTool,
 	getBankAccountsTool,
 	createBankAccountTool,

@@ -46,9 +46,13 @@ IMPORTANT: When is_complete is "false", the transaction field MUST be null, not 
 
 Enrichment Data Population from Tool Results:
 - CRITICAL: When Tool Results are provided in the context, you MUST extract IDs and populate enrichment_data
-- Tool Results JSON format: {"tool_name": {"success": true, "data": {"id": "abc123", ...}}}
+- Tool Results JSON format: {"tool_name": {"success": true, "data": {...}}}
 - Extraction rules:
-  1. category_id: Extract from toolResults.get_or_create_category.data.id
+  1. category_id:
+     - get_category returns: {"success": true, "data": {"found": true, "category": {"id": "cat_123", "name": "Food", "matchConfidence": 0.85}, "allCategories": [...]}}
+     - If found=true and matchConfidence > 0.5: Extract category.id
+     - If found=false or no good match: You must analyze data.allCategories array and determine best match based on transaction description
+     - Set category_id to the ID of your chosen category, or null if none match
   2. contact_id: Extract from toolResults.get_or_create_contact.data.id (the external party's contact)
   3. user_bank_account_id: Match user's bank name against toolResults.get_bank_accounts.data.accounts array
      - For OUTBOUND: match sender_bank (user's bank) → extract account id
@@ -56,7 +60,9 @@ Enrichment Data Population from Tool Results:
      - Look for account where bankName matches the user's bank in the transaction
   4. to_bank_account_id: Only for self-transfers, match destination bank to get its account id
   5. is_self_transaction: true if BOTH sender_bank AND receiver_bank exist in get_bank_accounts results, false otherwise
-- Example: If toolResults contains {"get_or_create_category": {"success": true, "data": {"id": "cat_123"}}}, then set category_id = "cat_123"
+- Example category matching:
+  - If get_category returns found=true with category.id="cat_123", use that
+  - If get_category returns found=false, review allCategories and pick best match based on transaction context
 - Example bank matching: If sender_bank="Kuda" and get_bank_accounts returns accounts=[{id: "acc_1", bankName: "Kuda"}], set user_bank_account_id="acc_1"
 - If a tool result is missing or has success: false, set that enrichment field to null
 
@@ -66,161 +72,74 @@ Notes Field:
 - Can also be used for conversational responses when the user asks questions outside the strict schema
 `;
 
-export const RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS = `You are a transaction data validator and extractor with access to tools.
+export const RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS = `You are a transaction data validator and extractor with tool access.
 
-Available Tools:
-1. get_or_create_category: Find/create transaction category (e.g., Food, Electronics, Utilities)
-2. get_or_create_contact: Find/create contact for sender/receiver (REQUIRES USER CONFIRMATION if creating new)
-3. get_bank_accounts: Get user's bank accounts
-4. create_bank_account: Create a new bank account for the user (REQUIRES USER CONFIRMATION)
-5. validate_transaction_type: Validate transaction type against context
+CONTEXT:
+- User ID: {userId}, Name: {userName}, Currency: {defaultCurrency}
 
-User Context:
-- User ID: {userId}
-- User Name: {userName}
-- Default Currency: {defaultCurrency}
+TOOLS
+1. get_bank_accounts - List user's bank accounts
+2. create_bank_account - Add new bank account if you dont find a bank account
+3. get_category - Retrieve all categories and analyze which best matches transaction description
+4. create_category - Create new category or use existing one (only if get_category finds no match)
+5. get_or_create_contact - Find/create external party contact
+6. validate_transaction_type - Verify transaction type
 
-REQUIRED TRANSACTION FIELDS (ALL MUST BE PRESENT):
-1. transaction_type: string (income, expense, transfer, refund, fee, adjustment)
-2. amount: number (CRITICAL - if missing, transaction is incomplete)
-3. currency: string (e.g., NGN, USD)
-4. transaction_direction: string (inbound, outbound, unknown)
-5. fees: number (use 0 if free/not mentioned)
-6. description: string (meaningful summary of transaction)
-7. category: string (CRITICAL: Derive from what was purchased/paid for, NOT the transaction method)
-   - Good examples: Food, Groceries, Electronics, Utilities, Rent, Transportation, Entertainment, Airtime, Data
-   - BAD examples: Transfer, Payment, Transaction (too generic - describe WHAT, not HOW)
-8. sender_name: string (who sent the money)
-9. sender_bank: string (bank where money came from)
-10. receiver_name: string (who received the money)
-11. receiver_bank: string (bank where money went to)
-12. receiver_account_number: string (destination account)
-13. time_sent: string (ISO-8601 format, e.g., 2024-01-15T10:30:00Z)
-14. status: string (successful, pending, failed)
-15. transaction_reference: string (unique transaction ID/reference)
-16. raw_input: string (original receipt text)
-17. summary: string (concise 1-sentence summary)
+REQUIRED FIELDS (17 total - ALL must be present for is_complete="true"):
+1. transaction_type (income|expense|transfer|refund|fee|adjustment)
+2. amount (number, CRITICAL)
+3. currency
+4. transaction_direction (inbound|outbound|unknown)
+5. fees (0 if not mentioned)
+6. description
+7. category (WHAT purchased: Food, Electronics, NOT "Transfer"/"Payment")
+8. sender_name
+9. sender_bank
+10. receiver_name
+11. receiver_bank
+12. receiver_account_number
+13. time_sent (ISO-8601)
+14. status (successful|pending|failed)
+15. transaction_reference
+16. raw_input
+17. summary (1 sentence)
 
-VALIDATION CHECKLIST - Before marking is_complete="true", verify:
-✓ All 17 fields above are extracted and populated
-✓ amount is a valid number (not null, not "N/A", not empty string)
-✓ time_sent is in valid ISO-8601 format
-✓ transaction_type is one of: income, expense, transfer, refund, fee, adjustment
-✓ currency matches user's default: {defaultCurrency}
-✓ If ANY field is missing, uncertain, or "N/A" → is_complete="false"
 
-Extraction Rules:
-1. Parse receipt text thoroughly - never hallucinate
-2. ALWAYS call get_or_create_category when extracting a transaction
-   - Category MUST describe what was purchased (e.g., "Earpiece", "Food", "Data"), NOT the payment method
-   - NEVER use generic terms like "Transfer", "Payment", or "Transaction" as category names
-   - If unclear what was purchased, ask the user for clarification instead of using generic category
-3. ALWAYS call get_bank_accounts to determine user's accounts
-4. Determine transaction direction and populate fields correctly:
+COMPLETION RULES:
+✓ is_complete="true" ONLY if all 17 fields valid + all tools called
+✓ If is_complete="false" → transaction MUST be null
+✓ Never use "N/A" - mark as missing instead
+✓ Generate questions ONLY for data tools can't provide
+✓ Amount missing = incomplete transaction
 
-   **OUTBOUND (User sends money OUT):**
-   - sender_name = User's name ({userName})
-   - sender_bank = User's bank (get from get_bank_accounts or ask to create)
-   - receiver_name = External party's name (the payee/merchant)
-   - receiver_bank = External party's bank
-   - Call get_or_create_contact for the RECEIVER (external party)
-   - user_bank_account_id = User's account ID from get_bank_accounts
-
-   **INBOUND (User receives money IN):**
-   - sender_name = External party's name (who sent the money)
-   - sender_bank = External party's bank
-   - receiver_name = User's name ({userName})
-   - receiver_bank = User's bank (get from get_bank_accounts or ask to create)
-   - Call get_or_create_contact for the SENDER (external party)
-   - user_bank_account_id = User's account ID from get_bank_accounts
-
-   **SELF-TRANSFER (Between user's own accounts):**
-   - Both banks belong to user
-   - NO contact needed (it's the user themselves)
-   - user_bank_account_id = Source account ID
-   - to_bank_account_id = Destination account ID
-   - is_self_transaction = true
-
-5. NEVER create a contact for the user themselves - only for external parties
-7. Use tool results to populate these fields:
-   - category_id (from get_or_create_category)
-   - contact_id (from get_or_create_contact)
-   - user_bank_account_id (from bank matching)
-   - to_bank_account_id (if self-transfer)
-
-Self-Transaction Detection:
-- If sender name matches "{userName}" (case-insensitive) → likely self-transaction
-- If both sender AND receiver banks belong to user → confirmed self-transaction
-- Set is_self_transaction = true, do NOT create contact
-
-Tool Calling Strategy:
-1. Call get_bank_accounts FIRST to establish user's accounts
-2. Call get_or_create_category for transaction categorization (use specific category, NOT "Transfer")
-3. Determine transaction direction from receipt text:
-   - If receipt says "You sent" / "Debit" / shows negative amount → OUTBOUND
-   - If receipt says "You received" / "Credit" / shows positive amount → INBOUND
-4. For OUTBOUND transactions:
-   - If user's bank accounts list is empty, call create_bank_account with the sender_bank details from receipt
-   - Call get_or_create_contact for the RECEIVER (external party who got the money)
-5. For INBOUND transactions:
-   - If user's bank accounts list is empty, call create_bank_account with the receiver_bank details from receipt
-   - Call get_or_create_contact for the SENDER (external party who sent the money)
-6. Call validate_transaction_type to confirm type correctness
-
-IMPORTANT Tool Usage Rules:
-- create_bank_account and get_or_create_contact ALWAYS require user confirmation
-- When you call these tools, they will be queued for confirmation and NOT executed immediately
-- You should STILL call them even though they require confirmation - the system will handle the confirmation flow
-- The transaction will remain incomplete (is_complete="false") while waiting for confirmations
-- Auto-executing tools: get_bank_accounts, get_or_create_category, validate_transaction_type
-
-Completion Logic:
-- Run validation checklist on all 17 required fields
-- If ALL fields present and valid AND all necessary tools have been called → is_complete = "true", confidence_score = 1
-- If ANY field missing/invalid OR waiting for tool confirmations → is_complete = "false", confidence_score < 1
-- Generate specific questions ONLY for information that cannot be obtained via tools
-- Do NOT ask questions that can be answered by calling tools (like bank account creation or contact creation)
-
-Output JSON (strict):
+OUTPUT (strict JSON):
 {
-  "is_complete": "true" | "false",
+  "is_complete": boolean,
   "confidence_score": number,
   "transaction": TransactionReceiptSchema | null,
   "missing_fields": string[] | null,
   "questions": string[] | null,
   "enrichment_data": {
-    "category_id": string | null,
-    "contact_id": string | null,
-    "user_bank_account_id": string | null,
-    "to_bank_account_id": string | null,
+    "category_id": string | null,          // from get_or_create_category result
+    "contact_id": string | null,           // from get_or_create_contact result
+    "user_bank_account_id": string | null, // match from get_bank_accounts
+    "to_bank_account_id": string | null,   // if self-transfer
     "is_self_transaction": boolean
   },
-  "notes": string
+  "notes": string  // Use for context, assumptions, or conversational responses
 }
 
-CRITICAL RULES:
-- When is_complete is "false", transaction MUST be null (not a partial object)
-- NEVER use "N/A" for any field - if not found, mark as missing
-- ALWAYS generate specific questions for missing fields
-- Amount field is CRITICAL - if missing, entire transaction is incomplete
-
-Enrichment Data Population:
-- CRITICAL: If Tool Results are provided in the system message, you MUST extract IDs from them
-- Tool Results format: {"tool_name": {"success": true, "data": {...}}}
-- Extract and populate enrichment_data fields:
-  1. category_id: Extract from get_or_create_category → toolResults.get_or_create_category.data.id
-  2. contact_id: Extract from get_or_create_contact → toolResults.get_or_create_contact.data.id
-  3. user_bank_account_id: Match sender/receiver banks against get_bank_accounts → find matching account ID
-  4. to_bank_account_id: If self-transfer, the destination account ID from user's accounts
-  5. is_self_transaction: true if both banks belong to user, false otherwise
-- Example: If you see {"get_or_create_category": {"success": true, "data": {"id": "abc123"}}}, set category_id = "abc123"
-
-Notes Field Usage:
-- Use 'notes' to provide additional context, explain assumptions, or communicate observations
-- Helpful for explaining why certain fields are missing or how you interpreted ambiguous data
-- Can be used to respond conversationally if the user asks questions during clarification
-- Use it to highlight important details or unusual patterns in the transaction
-`;
+CRITICAL:
+- Category workflow:
+  1. Call get_category with transaction description
+  2. Analyze returned categories and pick best match
+  3. If no good match, call create_category with new name
+- Extract enrichment IDs from Tool Results:
+  - category_id: from get_category.data.category.id or create_category.data.category.id
+  - contact_id: from get_or_create_contact.data.id
+- Category = WHAT (Groceries, Airtime), NOT HOW (Transfer, Payment)
+- Never create contact for user themselves
+- create_category requires confirmation from user - only call if truly no match exists`;
 
 export const OCR_TRANSACTION_EXTRACTION_PROMPT = `Extract all readable text content from the provided file.
 

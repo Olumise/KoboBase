@@ -1,6 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import * as z from "zod";
 import { prisma } from "../lib/prisma";
+import { ContactType } from "../constants/types";
 
 const GetOrCreateContactSchema = z.object({
 	contactName: z

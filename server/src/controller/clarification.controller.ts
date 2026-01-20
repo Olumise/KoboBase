@@ -6,6 +6,7 @@ import {
 	completeClarificationSession,
 	getUserClarificationSessions,
 	sendClarificationMessage,
+	handleConfirmationResponse,
 } from "../services/clarification.service";
 import { CreateClarificationSessionType } from "../schema/clarification";
 
@@ -113,6 +114,31 @@ export const sendClarificationMessageController = async (
 		}
 
 		const result = await sendClarificationMessage(sessionId, userId, message);
+		res.send(result);
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const handleConfirmationController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user.id;
+	const { sessionId } = req.params;
+	const { confirmations } = req.body;
+
+	try {
+		if (!sessionId || typeof sessionId !== 'string') {
+			throw new AppError(400, "Session ID is required", "handleConfirmationController");
+		}
+
+		if (!confirmations || typeof confirmations !== 'object') {
+			throw new AppError(400, "Confirmations object is required", "handleConfirmationController");
+		}
+
+		const result = await handleConfirmationResponse(sessionId, userId, confirmations);
 		res.send(result);
 	} catch (err) {
 		next(err);
