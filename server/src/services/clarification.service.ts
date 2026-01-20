@@ -8,6 +8,8 @@ import {
 } from "../schema/clarification";
 import { TransactionReceiptAiResponseSchema } from "../schema/ai-formats";
 import { RECEIPT_TRANSACTION_SYSTEM_PROMPT } from "../lib/prompts";
+import { executeAITool } from "./aiToolExecutor.service";
+import { allAITools } from "../tools";
 
 export const createClarification = async (
 	data: CreateClarificationSessionType
@@ -316,10 +318,7 @@ export const sendClarificationMessage = async (
 		temperature: 0,
 	});
 
-	const transactionllm = OpenAIllm.withStructuredOutput(
-		TransactionReceiptAiResponseSchema,
-		{ name: "extract_transaction", strict: true }
-	);
+	const existingToolResults = (session.toolResults as any) || {};
 
 	const conversationHistory = [
 		{
@@ -332,7 +331,47 @@ export const sendClarificationMessage = async (
 		})),
 	];
 
-	const aiResponse = await transactionllm.invoke(conversationHistory);
+	const llmWithTools = OpenAIllm.bindTools(allAITools, {
+		tool_choice: "auto",
+	});
+
+	const aiResponseWithTools = await llmWithTools.invoke(conversationHistory);
+
+	const newToolCalls = aiResponseWithTools.tool_calls || [];
+	const newToolResults: Record<string, any> = {};
+
+	for (const toolCall of newToolCalls) {
+		const result = await executeAITool(toolCall.name as any, toolCall.args);
+		newToolResults[toolCall.name] = result;
+	}
+
+	const allToolResults = { ...existingToolResults, ...newToolResults };
+
+	if (Object.keys(newToolResults).length > 0) {
+		await prisma.clarificationSession.update({
+			where: { id: session.id },
+			data: { toolResults: allToolResults },
+		});
+	}
+
+	const finalPrompt = [
+		{
+			role: "system",
+			content: `${RECEIPT_TRANSACTION_SYSTEM_PROMPT}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(allToolResults, null, 2)}`,
+		},
+		...conversationHistory.slice(1),
+		{
+			role: "user",
+			content: "Based on all the information above and tool results, provide the final structured transaction. Extract IDs from tool results and populate enrichment_data fields.",
+		},
+	];
+
+	const transactionllm = OpenAIllm.withStructuredOutput(
+		TransactionReceiptAiResponseSchema,
+		{ name: "extract_transaction", strict: true }
+	);
+
+	const aiResponse = await transactionllm.invoke(finalPrompt);
 
 	const aiMessage = await prisma.clarificationMessage.create({
 		data: {
@@ -342,10 +381,77 @@ export const sendClarificationMessage = async (
 		},
 	});
 
+	let enrichedTransaction = null;
+	if (aiResponse.is_complete === "true" && aiResponse.transaction) {
+		enrichedTransaction = {
+			...aiResponse.transaction,
+			categoryId: allToolResults.get_or_create_category?.data?.id,
+			contactId: allToolResults.get_or_create_contact?.data?.id,
+			userBankAccountId: aiResponse.enrichment_data?.user_bank_account_id,
+			toBankAccountId: aiResponse.enrichment_data?.to_bank_account_id,
+			isSelfTransaction: aiResponse.enrichment_data?.is_self_transaction || false,
+		};
+	}
+
 	return {
 		userMessage: message,
 		aiResponse: aiResponse,
 		aiMessage: aiMessage,
 		sessionId: session.id,
+		isComplete: aiResponse.is_complete === "true",
+		transaction: enrichedTransaction,
+	};
+};
+
+export const handleConfirmationResponse = async (
+	sessionId: string,
+	userId: string,
+	confirmations: Record<string, boolean>
+) => {
+	const session = await prisma.clarificationSession.findUnique({
+		where: { id: sessionId },
+		include: { receipt: true },
+	});
+
+	if (!session || session.userId !== userId) {
+		throw new AppError(404, "Clarification session not found", "handleConfirmationResponse");
+	}
+
+	if (session.status !== "pending_confirmation") {
+		throw new AppError(400, "Session is not awaiting confirmation", "handleConfirmationResponse");
+	}
+
+	const pendingToolCalls = session.pendingToolCalls as any[];
+	const existingToolResults = session.toolResults as any || {};
+
+	const newToolResults = { ...existingToolResults };
+
+	for (const toolCall of pendingToolCalls) {
+		const isConfirmed = confirmations[toolCall.name];
+
+		if (isConfirmed) {
+			const result = await executeAITool(toolCall.name as any, toolCall.args);
+			newToolResults[toolCall.name] = result;
+		} else {
+			newToolResults[toolCall.name] = {
+				success: false,
+				skipped: true,
+				reason: "User declined",
+			};
+		}
+	}
+
+	await prisma.clarificationSession.update({
+		where: { id: sessionId },
+		data: {
+			status: "active",
+			toolResults: newToolResults,
+			pendingToolCalls: undefined,
+		},
+	});
+
+	return {
+		success: true,
+		toolResults: newToolResults,
 	};
 };

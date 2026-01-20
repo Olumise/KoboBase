@@ -99,14 +99,16 @@ model Transaction {
 }
 
 model ClarificationSession {
-  id            String    @id @default(uuid())
-  receiptId     String    @map("receipt_id")
-  transactionId String?   @map("transaction_id")
-  userId        String    @map("user_id")
-  status        String    @default("active") @db.VarChar(20)
-  extractedData Json?     @map("extracted_data")
-  startedAt     DateTime  @default(now()) @map("started_at")
-  completedAt   DateTime? @map("completed_at")
+  id               String    @id @default(uuid())
+  receiptId        String    @map("receipt_id")
+  transactionId    String?   @map("transaction_id")
+  userId           String    @map("user_id")
+  status           String    @default("active") @db.VarChar(20)
+  extractedData    Json?     @map("extracted_data")
+  pendingToolCalls Json?     @map("pending_tool_calls")
+  toolResults      Json?     @map("tool_results")
+  startedAt        DateTime  @default(now()) @map("started_at")
+  completedAt      DateTime? @map("completed_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @map("updated_at")

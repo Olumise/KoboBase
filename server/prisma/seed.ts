@@ -108,9 +108,23 @@ const categories = [
 		isActive: true,
 	},
 	{
-		name: "Other",
-		icon: "📦",
-		color: "#C7CEEA",
+		name: "Data & Airtime",
+		icon: "📱",
+		color: "#4A90E2",
+		isSystemCategory: true,
+		isActive: true,
+	},
+	{
+		name: "Betting & Gaming",
+		icon: "🎲",
+		color: "#E24A4A",
+		isSystemCategory: true,
+		isActive: true,
+	},
+	{
+		name: "Generator & Fuel",
+		icon: "⚡",
+		color: "#FFB900",
 		isSystemCategory: true,
 		isActive: true,
 	},
@@ -123,4 +137,4 @@ const seed = async () => {
 	});
 };
 
-seed()
+seed();

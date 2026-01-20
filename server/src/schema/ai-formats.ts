@@ -20,6 +20,14 @@ export const TransactionReceiptSchema = z.object({
 	summary: z.string(),
 });
 
+export const EnrichmentDataSchema = z.object({
+	category_id: z.string().nullable(),
+	contact_id: z.string().nullable(),
+	user_bank_account_id: z.string().nullable(),
+	to_bank_account_id: z.string().nullable(),
+	is_self_transaction: z.boolean(),
+});
+
 export const TransactionReceiptAiResponseSchema = z.object({
 	is_complete: z
 		.string()
@@ -45,6 +53,12 @@ export const TransactionReceiptAiResponseSchema = z.object({
 		.number()
 		.describe(
 			"How confident are you about this result on a scale 0 to 1. Must be 1 if all fields present, less than 1 if any missing"
+		),
+	enrichment_data: EnrichmentDataSchema.nullable(),
+	notes: z
+		.string()
+		.describe(
+			"Any additional context, observations, or information that doesn't fit into other fields. Use this to communicate important details, assumptions made, or anything else relevant."
 		),
 });
 
