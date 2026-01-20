@@ -14,6 +14,11 @@ const GetBankAccountsSchema = z.object({
 		.describe("Filter by currency code (e.g., NGN, USD)"),
 });
 
+const GetBankAccountByIdSchema = z.object({
+	accountId: z.string().describe("The ID of the bank account to retrieve"),
+	userId: z.string().describe("The ID of the user who owns the account"),
+});
+
 export const getBankAccountsTool = tool(
 	async ({ userId, isActive, currency }) => {
 		try {
@@ -29,9 +34,21 @@ export const getBankAccountsTool = tool(
 				],
 			});
 
+			if (accounts.length === 0) {
+				return JSON.stringify({
+					success: false,
+					requiresBankAccount: true,
+					message: "No bank accounts found. Please ask the user to provide or attach the bank account ID to accurately record this transaction.",
+					accounts: [],
+					total: 0,
+					primaryAccount: null,
+				});
+			}
+
 			const primaryAccount = accounts.find((acc) => acc.isPrimary) || null;
 
 			return JSON.stringify({
+				success: true,
 				accounts: accounts.map((acc) => ({
 					id: acc.id,
 					userId: acc.userId,
@@ -74,104 +91,58 @@ export const getBankAccountsTool = tool(
 	{
 		name: "get_bank_accounts",
 		description:
-			"Retrieve a list of the user's bank accounts. Can filter by active status or currency. Returns all accounts with optional primary account highlighted.",
+			"Retrieve a list of the user's bank accounts. Can filter by active status or currency. Returns all accounts with optional primary account highlighted. If no bank accounts are found (requiresBankAccount: true), you MUST inform the user that they need to provide or attach a bank account ID to accurately record the transaction. Do not proceed without a valid bank account.",
 		schema: GetBankAccountsSchema,
 	}
 );
 
-const CreateBankAccountSchema = z.object({
-	userId: z.string().describe("The ID of the user"),
-	accountName: z.string().describe("The name on the bank account"),
-	accountNumber: z
-		.string()
-		.optional()
-		.describe("The account number (optional for wallets/cards)"),
-	bankName: z.string().describe("The name of the bank or financial institution"),
-	accountType: z
-		.enum(["savings", "current", "wallet", "card", "other"])
-		.optional()
-		.describe("The type of account"),
-	currency: z
-		.string()
-		.default("NGN")
-		.describe("Currency code (defaults to NGN)"),
-	nickname: z
-		.string()
-		.optional()
-		.describe("Optional nickname for easy identification"),
-	isPrimary: z
-		.boolean()
-		.default(false)
-		.describe(
-			"Set as primary account (will unset other primary accounts if true)"
-		),
-});
-
-export const createBankAccountTool = tool(
-	async ({
-		userId,
-		accountName,
-		accountNumber,
-		bankName,
-		accountType,
-		currency = "NGN",
-		nickname,
-		isPrimary = false,
-	}) => {
+export const getBankAccountByIdTool = tool(
+	async ({ accountId, userId }) => {
 		try {
-			if (isPrimary) {
-				await prisma.bankAccount.updateMany({
-					where: {
-						userId: userId,
-						isPrimary: true,
-					},
-					data: {
-						isPrimary: false,
-					},
-				});
-			}
-
-			const newAccount = await prisma.bankAccount.create({
-				data: {
-					userId,
-					accountName,
-					accountNumber: accountNumber || null,
-					bankName,
-					accountType: accountType || null,
-					currency,
-					nickname: nickname || null,
-					isPrimary,
-					isActive: true,
+			const account = await prisma.bankAccount.findFirst({
+				where: {
+					id: accountId,
+					userId: userId,
 				},
 			});
 
+			if (!account) {
+				return JSON.stringify({
+					success: false,
+					error: "Bank account not found",
+					message: "The specified bank account was not found or does not belong to this user.",
+				});
+			}
+
 			return JSON.stringify({
-				id: newAccount.id,
-				userId: newAccount.userId,
-				accountName: newAccount.accountName,
-				accountNumber: newAccount.accountNumber,
-				bankName: newAccount.bankName,
-				accountType: newAccount.accountType,
-				currency: newAccount.currency,
-				nickname: newAccount.nickname,
-				isActive: newAccount.isActive,
-				isPrimary: newAccount.isPrimary,
-				createdAt: newAccount.createdAt.toISOString(),
-				updatedAt: newAccount.updatedAt.toISOString(),
-				created: true,
-				message: `Successfully created bank account${isPrimary ? " and set as primary" : ""}`,
+				success: true,
+				account: {
+					id: account.id,
+					userId: account.userId,
+					accountName: account.accountName,
+					accountNumber: account.accountNumber,
+					bankName: account.bankName,
+					accountType: account.accountType,
+					currency: account.currency,
+					nickname: account.nickname,
+					isActive: account.isActive,
+					isPrimary: account.isPrimary,
+					createdAt: account.createdAt.toISOString(),
+					updatedAt: account.updatedAt.toISOString(),
+				},
 			});
 		} catch (error) {
 			return JSON.stringify({
-				error: "Failed to create bank account",
+				success: false,
+				error: "Failed to get bank account",
 				message: error instanceof Error ? error.message : "Unknown error",
 			});
 		}
 	},
 	{
-		name: "create_bank_account",
+		name: "get_bank_account_by_id",
 		description:
-			"Create a new bank account for the user. Supports various account types including savings, current, wallets, and cards. Can optionally set as primary account.",
-		schema: CreateBankAccountSchema,
+			"Retrieve a specific bank account by its ID. Use this tool when the user provides a bank account ID to fetch the complete account details including bank name, account name, and account number. This is essential for accurately recording transaction details.",
+		schema: GetBankAccountByIdSchema,
 	}
 );

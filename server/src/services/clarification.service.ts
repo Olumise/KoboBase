@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../middlewares/errorHandler";
 import {
@@ -11,6 +10,7 @@ import { RECEIPT_TRANSACTION_SYSTEM_PROMPT } from "../lib/prompts";
 import { executeAITool } from "./aiToolExecutor.service";
 import { allAITools } from "../tools";
 import { shouldRequireConfirmation, generateConfirmationQuestion } from "../config/toolConfirmations";
+import { OpenAIllm } from "../models/llm.models";
 
 export const createClarification = async (
 	data: CreateClarificationSessionType
@@ -84,11 +84,6 @@ export const createClarification = async (
 			receipt: true,
 			clarificationMessages: true,
 		},
-	});
-
-	const OpenAIllm = new ChatOpenAI({
-		model: "gpt-4o",
-		temperature: 0,
 	});
 
 	const transactionllm = OpenAIllm.withStructuredOutput(
@@ -314,11 +309,6 @@ export const sendClarificationMessage = async (
 		},
 	});
 
-	const OpenAIllm = new ChatOpenAI({
-		model: "gpt-4o",
-		temperature: 0,
-	});
-
 	const existingToolResults = (session.toolResults as any) || {};
 
 	const conversationHistory = [
@@ -501,11 +491,6 @@ export const handleConfirmationResponse = async (
 			toolResults: newToolResults,
 			pendingToolCalls: undefined,
 		},
-	});
-
-	const OpenAIllm = new ChatOpenAI({
-		model: "gpt-4o",
-		temperature: 0,
 	});
 
 	const allMessages = await prisma.clarificationMessage.findMany({

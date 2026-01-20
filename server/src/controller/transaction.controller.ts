@@ -28,15 +28,27 @@ export const initiateTransactionController = async (
 	res: Response,
 	next: NextFunction
 ) => {
-	const { receiptId } = req.body;
+	const { receiptId, userBankAccountId } = req.body;
 	const userId = req.user?.id;
 
 	if (!userId) {
 		throw new AppError(401, "Unauthorized!", "initiateTransactionController");
 	}
 
+	if (!userBankAccountId) {
+		throw new AppError(
+			400,
+			"Bank Account ID is required to initiate transaction!",
+			"initiateTransactionController"
+		);
+	}
+
 	try {
-		const result = await initiateTransactionFromReceipt(receiptId, userId);
+		const result = await initiateTransactionFromReceipt(
+			receiptId,
+			userId,
+			userBankAccountId
+		);
 		res.status(200).json(result);
 	} catch (err) {
 		next(err);

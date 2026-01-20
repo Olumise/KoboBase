@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { TransactionReceiptAiResponseSchema } from "../schema/ai-formats";
 import {
 	RECEIPT_TRANSACTION_SYSTEM_PROMPT,
@@ -18,11 +17,7 @@ import {
 	generateConfirmationQuestion,
 } from "../config/toolConfirmations";
 import { executeAITool } from "./aiToolExecutor.service";
-
-const OpenAIllm = new ChatOpenAI({
-	model: "gpt-4.1",
-	temperature: 0,
-});
+import { OpenAIllmGPT4Turbo as OpenAIllm, OpenAIllmCreative } from "../models/llm.models";
 
 export const generateTransaction = async (
 	input: string,
@@ -47,12 +42,21 @@ export const generateTransaction = async (
 
 export const initiateTransactionFromReceipt = async (
 	receiptId: string,
-	userId: string
+	userId: string,
+	userBankAccountId: string
 ) => {
 	if (!receiptId) {
 		throw new AppError(
 			400,
 			"Receipt Id required!",
+			"initiateTransactionFromReceipt"
+		);
+	}
+
+	if (!userBankAccountId) {
+		throw new AppError(
+			400,
+			"Bank Account ID is required to initiate transaction!",
 			"initiateTransactionFromReceipt"
 		);
 	}
@@ -126,14 +130,31 @@ export const initiateTransactionFromReceipt = async (
 		throw new AppError(404, "User not found", "initiateTransactionFromReceipt");
 	}
 
-	const llmWithTools = OpenAIllm.bindTools(allAITools, {});
+	const bankAccount = await prisma.bankAccount.findFirst({
+		where: {
+			id: userBankAccountId,
+			userId: userId,
+			isActive: true,
+		},
+	});
+
+	if (!bankAccount) {
+		throw new AppError(
+			404,
+			"Bank account not found or does not belong to this user!",
+			"initiateTransactionFromReceipt"
+		);
+	}
+
+	const llmWithTools = OpenAIllmCreative.bindTools(allAITools, {});
 
 	const systemPrompt = RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS.replace(
 		"{userId}",
 		user.id
 	)
 		.replace("{userName}", user.name)
-		.replace("{defaultCurrency}", user.defaultCurrency);
+		.replace("{defaultCurrency}", user.defaultCurrency)
+		.replace("{userBankAccountId}", userBankAccountId);
 
 	const initialPrompt = [
 		{

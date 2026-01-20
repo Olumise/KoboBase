@@ -43,9 +43,9 @@ export const uploadFile = async (
 	if (!prefix) {
 		fileName = `${Date.now()}-${file.originalname}`;
 	}
-	fileName = `${prefix}-${Date.now()}-${file.originalname}`;
+	fileName = `${Date.now()}`;
 
-	const key = `mesa-fresh/${fileName}`;
+	const key = `kobo_base/${fileName}`;
 	const uploadImage = new PutObjectCommand({
 		Bucket: "my_dev_projects",
 		Key: key,

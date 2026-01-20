@@ -58,6 +58,7 @@ export const errorHandler = async (
 			}),
 		});
 	}
+	
 	console.log("Error:", err.message);
 	return res.status(500).json({
 		message: err.message,
