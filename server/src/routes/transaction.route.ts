@@ -1,10 +1,25 @@
 import express from "express";
-import { generateTransactionController, initiateTransactionController } from "../controller/transaction.controller";
+import {
+	generateTransactionController,
+	initiateTransactionController,
+	getUserTransactionsController,
+	getTransactionByIdController,
+	createTransactionController,
+	updateTransactionController,
+	deleteTransactionController,
+	getTransactionStatsController,
+} from "../controller/transaction.controller";
 import { authVerify } from "../middlewares/authVerify";
 
-const transactionRouter = express()
+const transactionRouter = express();
 
-transactionRouter.post("/generate", generateTransactionController)
-transactionRouter.post("/initiate", authVerify, initiateTransactionController)
+transactionRouter.post("/generate", generateTransactionController);
+transactionRouter.post("/initiate", authVerify, initiateTransactionController);
+transactionRouter.get("/", authVerify, getUserTransactionsController);
+transactionRouter.get("/stats", authVerify, getTransactionStatsController);
+transactionRouter.get("/:transactionId", authVerify, getTransactionByIdController);
+transactionRouter.post("/", authVerify, createTransactionController);
+transactionRouter.put("/:transactionId", authVerify, updateTransactionController);
+transactionRouter.delete("/:transactionId", authVerify, deleteTransactionController);
 
-export default transactionRouter
+export default transactionRouter;

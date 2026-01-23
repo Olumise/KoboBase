@@ -1,6 +1,15 @@
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../middlewares/errorHandler";
-import { generateTransaction, initiateTransactionFromReceipt } from "../services/transaction.service";
+import {
+	generateTransaction,
+	initiateTransactionFromReceipt,
+	getUserTransactions,
+	getTransactionById,
+	createTransaction,
+	updateTransaction,
+	deleteTransaction,
+	getTransactionStats,
+} from "../services/transaction.service";
 
 export const generateTransactionController = async (
 	req: Request,
@@ -50,6 +59,191 @@ export const initiateTransactionController = async (
 			userBankAccountId
 		);
 		res.status(200).json(result);
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getUserTransactionsController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "getUserTransactionsController");
+	}
+
+	try {
+		const {
+			transactionType,
+			categoryId,
+			contactId,
+			startDate,
+			endDate,
+			status,
+			limit,
+			offset,
+		} = req.query;
+
+		const filters = {
+			transactionType: transactionType as string | undefined,
+			categoryId: categoryId as string | undefined,
+			contactId: contactId as string | undefined,
+			startDate: startDate ? new Date(startDate as string) : undefined,
+			endDate: endDate ? new Date(endDate as string) : undefined,
+			status: status as string | undefined,
+			limit: limit ? parseInt(limit as string) : undefined,
+			offset: offset ? parseInt(offset as string) : undefined,
+		};
+
+		const result = await getUserTransactions(userId, filters);
+
+		res.status(200).json({
+			message: "Transactions retrieved successfully",
+			data: result,
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getTransactionByIdController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const transactionId = req.params.transactionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "getTransactionByIdController");
+	}
+
+	try {
+		const transaction = await getTransactionById(transactionId, userId);
+
+		res.status(200).json({
+			message: "Transaction retrieved successfully",
+			data: transaction,
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const createTransactionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "createTransactionController");
+	}
+
+	try {
+		const transactionData = {
+			...req.body,
+			userId,
+			transactionDate: req.body.transactionDate
+				? new Date(req.body.transactionDate)
+				: new Date(),
+		};
+
+		const transaction = await createTransaction(transactionData);
+
+		res.status(201).json({
+			message: "Transaction created successfully",
+			data: transaction,
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const updateTransactionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const transactionId = req.params.transactionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "updateTransactionController");
+	}
+
+	try {
+		const updates = { ...req.body };
+
+		if (updates.transactionDate) {
+			updates.transactionDate = new Date(updates.transactionDate);
+		}
+
+		const transaction = await updateTransaction({
+			transactionId,
+			userId,
+			updates,
+		});
+
+		res.status(200).json({
+			message: "Transaction updated successfully",
+			data: transaction,
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const deleteTransactionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const transactionId = req.params.transactionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "deleteTransactionController");
+	}
+
+	try {
+		const result = await deleteTransaction(transactionId, userId);
+
+		res.status(200).json(result);
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getTransactionStatsController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "getTransactionStatsController");
+	}
+
+	try {
+		const { startDate, endDate } = req.query;
+
+		const filters = {
+			startDate: startDate ? new Date(startDate as string) : undefined,
+			endDate: endDate ? new Date(endDate as string) : undefined,
+		};
+
+		const stats = await getTransactionStats(userId, filters);
+
+		res.status(200).json({
+			message: "Transaction statistics retrieved successfully",
+			data: stats,
+		});
 	} catch (err) {
 		next(err);
 	}

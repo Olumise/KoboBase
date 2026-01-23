@@ -330,3 +330,431 @@ export const initiateTransactionFromReceipt = async (
 		toolResults: autoToolResults,
 	};
 };
+
+export const getUserTransactions = async (
+	userId: string,
+	filters?: {
+		transactionType?: string;
+		categoryId?: string;
+		contactId?: string;
+		startDate?: Date;
+		endDate?: Date;
+		status?: string;
+		limit?: number;
+		offset?: number;
+	}
+) => {
+	const {
+		transactionType,
+		categoryId,
+		contactId,
+		startDate,
+		endDate,
+		status,
+		limit = 50,
+		offset = 0,
+	} = filters || {};
+
+	const where: any = { userId };
+
+	if (transactionType) {
+		where.transactionType = transactionType;
+	}
+
+	if (categoryId) {
+		where.categoryId = categoryId;
+	}
+
+	if (contactId) {
+		where.contactId = contactId;
+	}
+
+	if (status) {
+		where.status = status;
+	}
+
+	if (startDate || endDate) {
+		where.transactionDate = {};
+		if (startDate) {
+			where.transactionDate.gte = startDate;
+		}
+		if (endDate) {
+			where.transactionDate.lte = endDate;
+		}
+	}
+
+	const [transactions, total] = await Promise.all([
+		prisma.transaction.findMany({
+			where,
+			include: {
+				category: true,
+				contact: true,
+				userBankAccount: true,
+				toBankAccount: true,
+				receipt: true,
+			},
+			orderBy: {
+				transactionDate: "desc",
+			},
+			take: limit,
+			skip: offset,
+		}),
+		prisma.transaction.count({ where }),
+	]);
+
+	return {
+		transactions,
+		total,
+		limit,
+		offset,
+	};
+};
+
+export const getTransactionById = async (
+	transactionId: string,
+	userId: string
+) => {
+	const transaction = await prisma.transaction.findUnique({
+		where: {
+			id: transactionId,
+		},
+		include: {
+			category: true,
+			contact: true,
+			userBankAccount: true,
+			toBankAccount: true,
+			receipt: true,
+		},
+	});
+
+	if (!transaction) {
+		throw new AppError(404, "Transaction not found", "getTransactionById");
+	}
+
+	if (transaction.userId !== userId) {
+		throw new AppError(
+			403,
+			"You are not authorized to access this transaction",
+			"getTransactionById"
+		);
+	}
+
+	return transaction;
+};
+
+export const createTransaction = async (data: {
+	userId: string;
+	receiptId?: string;
+	contactId?: string;
+	categoryId?: string;
+	userBankAccountId?: string;
+	toBankAccountId?: string;
+	amount: number;
+	currency?: string;
+	transactionType: any;
+	transactionDate: Date;
+	isSelfTransaction?: boolean;
+	subcategory?: string;
+	description?: string;
+	paymentMethod?: string;
+	referenceNumber?: string;
+	aiConfidence?: number;
+	status?: any;
+}) => {
+	const {
+		userId,
+		receiptId,
+		contactId,
+		categoryId,
+		userBankAccountId,
+		toBankAccountId,
+		amount,
+		currency = "NGN",
+		transactionType,
+		transactionDate,
+		isSelfTransaction = false,
+		subcategory,
+		description,
+		paymentMethod,
+		referenceNumber,
+		aiConfidence,
+		status = "CONFIRMED",
+	} = data;
+
+	// Validate user exists
+	const user = await prisma.user.findUnique({
+		where: { id: userId },
+	});
+
+	if (!user) {
+		throw new AppError(404, "User not found", "createTransaction");
+	}
+
+	// Validate receipt if provided
+	if (receiptId) {
+		const receipt = await prisma.receipt.findUnique({
+			where: { id: receiptId },
+		});
+
+		if (!receipt) {
+			throw new AppError(404, "Receipt not found", "createTransaction");
+		}
+
+		if (receipt.userId !== userId) {
+			throw new AppError(
+				403,
+				"You are not authorized to use this receipt",
+				"createTransaction"
+			);
+		}
+	}
+
+	// Validate category if provided
+	if (categoryId) {
+		const category = await prisma.category.findUnique({
+			where: { id: categoryId },
+		});
+
+		if (!category) {
+			throw new AppError(404, "Category not found", "createTransaction");
+		}
+
+		if (category.userId && category.userId !== userId) {
+			throw new AppError(
+				403,
+				"You are not authorized to use this category",
+				"createTransaction"
+			);
+		}
+	}
+
+	// Validate user bank account if provided
+	if (userBankAccountId) {
+		const bankAccount = await prisma.bankAccount.findUnique({
+			where: { id: userBankAccountId },
+		});
+
+		if (!bankAccount) {
+			throw new AppError(
+				404,
+				"User bank account not found",
+				"createTransaction"
+			);
+		}
+
+		if (bankAccount.userId !== userId) {
+			throw new AppError(
+				403,
+				"You are not authorized to use this bank account",
+				"createTransaction"
+			);
+		}
+	}
+
+	const transaction = await prisma.transaction.create({
+		data: {
+			userId,
+			receiptId,
+			contactId,
+			categoryId,
+			userBankAccountId,
+			toBankAccountId,
+			amount,
+			currency,
+			transactionType,
+			transactionDate,
+			isSelfTransaction,
+			subcategory,
+			description,
+			paymentMethod,
+			referenceNumber,
+			aiConfidence,
+			status,
+		},
+		include: {
+			category: true,
+			contact: true,
+			userBankAccount: true,
+			toBankAccount: true,
+			receipt: true,
+		},
+	});
+
+	return transaction;
+};
+
+export const updateTransaction = async ({
+	transactionId,
+	userId,
+	updates,
+}: {
+	transactionId: string;
+	userId: string;
+	updates: any;
+}) => {
+	const transaction = await prisma.transaction.findUnique({
+		where: { id: transactionId },
+	});
+
+	if (!transaction) {
+		throw new AppError(404, "Transaction not found", "updateTransaction");
+	}
+
+	if (transaction.userId !== userId) {
+		throw new AppError(
+			403,
+			"You are not authorized to update this transaction",
+			"updateTransaction"
+		);
+	}
+
+	// Validate category if being updated
+	if (updates.categoryId) {
+		const category = await prisma.category.findUnique({
+			where: { id: updates.categoryId },
+		});
+
+		if (!category) {
+			throw new AppError(404, "Category not found", "updateTransaction");
+		}
+
+		if (category.userId && category.userId !== userId) {
+			throw new AppError(
+				403,
+				"You are not authorized to use this category",
+				"updateTransaction"
+			);
+		}
+	}
+
+	// Validate user bank account if being updated
+	if (updates.userBankAccountId) {
+		const bankAccount = await prisma.bankAccount.findUnique({
+			where: { id: updates.userBankAccountId },
+		});
+
+		if (!bankAccount) {
+			throw new AppError(
+				404,
+				"User bank account not found",
+				"updateTransaction"
+			);
+		}
+
+		if (bankAccount.userId !== userId) {
+			throw new AppError(
+				403,
+				"You are not authorized to use this bank account",
+				"updateTransaction"
+			);
+		}
+	}
+
+	const updatedTransaction = await prisma.transaction.update({
+		where: { id: transactionId },
+		data: updates,
+		include: {
+			category: true,
+			contact: true,
+			userBankAccount: true,
+			toBankAccount: true,
+			receipt: true,
+		},
+	});
+
+	return updatedTransaction;
+};
+
+export const deleteTransaction = async (
+	transactionId: string,
+	userId: string
+) => {
+	const transaction = await prisma.transaction.findUnique({
+		where: { id: transactionId },
+	});
+
+	if (!transaction) {
+		throw new AppError(404, "Transaction not found", "deleteTransaction");
+	}
+
+	if (transaction.userId !== userId) {
+		throw new AppError(
+			403,
+			"You are not authorized to delete this transaction",
+			"deleteTransaction"
+		);
+	}
+
+	await prisma.transaction.delete({
+		where: { id: transactionId },
+	});
+
+	return {
+		message: "Transaction deleted successfully",
+		deletedId: transactionId,
+	};
+};
+
+export const getTransactionStats = async (
+	userId: string,
+	filters?: {
+		startDate?: Date;
+		endDate?: Date;
+	}
+) => {
+	const { startDate, endDate } = filters || {};
+
+	const where: any = { userId };
+
+	if (startDate || endDate) {
+		where.transactionDate = {};
+		if (startDate) {
+			where.transactionDate.gte = startDate;
+		}
+		if (endDate) {
+			where.transactionDate.lte = endDate;
+		}
+	}
+
+	const [totalIncome, totalExpense, totalTransactions, transactionsByType] =
+		await Promise.all([
+			prisma.transaction.aggregate({
+				where: {
+					...where,
+					transactionType: "INCOME",
+				},
+				_sum: {
+					amount: true,
+				},
+			}),
+			prisma.transaction.aggregate({
+				where: {
+					...where,
+					transactionType: "EXPENSE",
+				},
+				_sum: {
+					amount: true,
+				},
+			}),
+			prisma.transaction.count({ where }),
+			prisma.transaction.groupBy({
+				by: ["transactionType"],
+				where,
+				_count: true,
+				_sum: {
+					amount: true,
+				},
+			}),
+		]);
+
+	const incomeAmount = Number(totalIncome._sum.amount || 0);
+	const expenseAmount = Number(totalExpense._sum.amount || 0);
+
+	return {
+		totalIncome: incomeAmount,
+		totalExpense: expenseAmount,
+		netBalance: incomeAmount - expenseAmount,
+		totalTransactions,
+		transactionsByType,
+	};
+};
