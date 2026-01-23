@@ -1,5 +1,3 @@
-import { ToolName } from "../tools";
-
 export const TOOL_CONFIRMATION_RULES = {
 	get_category: { requiresConfirmation: false, canAutoCreate: false },
 	create_category: {
@@ -7,6 +5,7 @@ export const TOOL_CONFIRMATION_RULES = {
 		canAutoCreate: false,
 	},
 	get_bank_accounts: { requiresConfirmation: false, canAutoCreate: false },
+	get_bank_account_by_id: { requiresConfirmation: false, canAutoCreate: false },
 	validate_transaction_type: {
 		requiresConfirmation: false,
 		canAutoCreate: false,
@@ -23,18 +22,15 @@ export function shouldRequireConfirmation(
 	toolName: string,
 	toolResult?: any
 ): boolean {
-	const rule = TOOL_CONFIRMATION_RULES[toolName as ToolName];
+	const rule = TOOL_CONFIRMATION_RULES[toolName as keyof typeof TOOL_CONFIRMATION_RULES];
 
 	if (!rule) return false;
-
-	if (rule.requiresConfirmation === true) return true;
-	if (rule.requiresConfirmation === false) return false;
 
 	if (rule.requiresConfirmation === "conditional") {
 		return toolResult?.created === true;
 	}
 
-	return false;
+	return rule.requiresConfirmation === true;
 }
 
 export function generateConfirmationQuestion(

@@ -405,7 +405,7 @@ export const sendClarificationMessage = async (
 		...conversationHistory.slice(1),
 		{
 			role: "user",
-			content: "Based on all the information above and tool results, provide the final structured transaction. Extract IDs from tool results and populate enrichment_data fields.",
+			content: "Evaluate the transaction based on the conversation history and tool results. Extract IDs from tool results and populate enrichment_data fields. Follow all validation rules including description validation.",
 		},
 	];
 
@@ -509,7 +509,7 @@ export const handleConfirmationResponse = async (
 		})),
 		{
 			role: "user",
-			content: "Based on all the information above and tool results (including the tools I just confirmed), provide the final structured transaction. Extract IDs from tool results and populate enrichment_data fields.",
+			content: "Evaluate the transaction based on the conversation history and tool results (including the tools I just confirmed). Extract IDs from tool results and populate enrichment_data fields. Follow all validation rules including description validation.",
 		},
 	];
 

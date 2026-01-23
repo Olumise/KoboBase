@@ -365,3 +365,85 @@ export const deleteCategory = async (categoryId: string, userId: string) => {
 		);
 	}
 };
+
+export const getAllCategories = async () => {
+	try {
+		const categories = await prisma.category.findMany({
+			where: {
+				isActive: true,
+			},
+			orderBy: [
+				{ isSystemCategory: "desc" },
+				{ name: "asc" },
+			],
+		});
+
+		return {
+			categories,
+			total: categories.length,
+			systemCategories: categories.filter(c => c.isSystemCategory).length,
+			userCategories: categories.filter(c => !c.isSystemCategory).length,
+		};
+	} catch (error) {
+		throw new AppError(
+			500,
+			`Failed to get all categories: ${error instanceof Error ? error.message : "Unknown error"}`,
+			"getAllCategories"
+		);
+	}
+};
+
+export const getSystemCategories = async () => {
+	try {
+		const categories = await prisma.category.findMany({
+			where: {
+				isSystemCategory: true,
+				isActive: true,
+			},
+			orderBy: {
+				name: "asc",
+			},
+		});
+
+		return {
+			categories,
+			total: categories.length,
+		};
+	} catch (error) {
+		throw new AppError(
+			500,
+			`Failed to get system categories: ${error instanceof Error ? error.message : "Unknown error"}`,
+			"getSystemCategories"
+		);
+	}
+};
+
+export const getUserCreatedCategories = async (userId: string) => {
+	if (!userId) {
+		throw new AppError(400, "User ID is required", "getUserCreatedCategories");
+	}
+
+	try {
+		const categories = await prisma.category.findMany({
+			where: {
+				userId: userId,
+				isSystemCategory: false,
+				isActive: true,
+			},
+			orderBy: {
+				name: "asc",
+			},
+		});
+
+		return {
+			categories,
+			total: categories.length,
+		};
+	} catch (error) {
+		throw new AppError(
+			500,
+			`Failed to get user created categories: ${error instanceof Error ? error.message : "Unknown error"}`,
+			"getUserCreatedCategories"
+		);
+	}
+};

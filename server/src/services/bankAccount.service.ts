@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../middlewares/errorHandler";
-import { AccountType } from "../../generated/prisma/client";
+import { AccountTypeValue } from "../constants/types";
+
 
 interface GetBankAccountsInput {
 	userId: string;
@@ -63,7 +64,7 @@ interface CreateBankAccountInput {
 	accountName: string;
 	accountNumber?: string;
 	bankName: string;
-	accountType?: AccountType;
+	accountType?: AccountTypeValue;
 	currency?: string;
 	nickname?: string;
 	isPrimary?: boolean;
@@ -258,7 +259,7 @@ interface UpdateBankAccountInput {
 		accountName?: string;
 		accountNumber?: string;
 		bankName?: string;
-		accountType?: AccountType;
+		accountType?: AccountTypeValue;
 		currency?: string;
 		nickname?: string;
 		isPrimary?: boolean;

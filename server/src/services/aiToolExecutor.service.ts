@@ -1,7 +1,7 @@
 import { AppError } from "../middlewares/errorHandler";
 import { toolsByName, ToolName } from "../tools";
 import { TransactionType } from "../../generated/prisma/client";
-import { ContactType } from "../constants/types";
+import { ContactType, ContactTypeValue } from "../constants/types";
 import { CONTACT_TYPE_KEYWORDS } from "../lib/contactTypeKeywords";
 import * as bankAccountService from "./bankAccount.service";
 import * as transactionValidatorService from "./transactionValidator.service";
@@ -325,7 +325,7 @@ export const enrichTransactionsBatch = async (
 export const determineContactType = (
 	bankName?: string,
 	description?: string
-): ContactType => {
+): ContactTypeValue => {
 	const searchText = `${bankName || ""} ${description || ""}`.toLowerCase();
 
 	for (const entry of CONTACT_TYPE_KEYWORDS) {
