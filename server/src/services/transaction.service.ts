@@ -18,6 +18,7 @@ import {
 } from "../config/toolConfirmations";
 import { executeAITool } from "./aiToolExecutor.service";
 import { OpenAIllmGPT4Turbo as OpenAIllm, OpenAIllmCreative } from "../models/llm.models";
+import { generateEmbedding } from "./embedding.service";
 
 export const generateTransaction = async (
 	input: string,
@@ -444,7 +445,7 @@ export const getTransactionById = async (
 
 export const createTransaction = async (data: {
 	userId: string;
-	receiptId?: string;
+	receiptId: string;
 	contactId?: string;
 	categoryId?: string;
 	userBankAccountId?: string;
@@ -460,6 +461,8 @@ export const createTransaction = async (data: {
 	referenceNumber?: string;
 	aiConfidence?: number;
 	status?: any;
+	summary: string;
+	clarificationSessionId?: string;
 }) => {
 	const {
 		userId,
@@ -479,9 +482,10 @@ export const createTransaction = async (data: {
 		referenceNumber,
 		aiConfidence,
 		status = "CONFIRMED",
+		summary,
+		clarificationSessionId,
 	} = data;
 
-	// Validate user exists
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
 	});
@@ -489,24 +493,20 @@ export const createTransaction = async (data: {
 	if (!user) {
 		throw new AppError(404, "User not found", "createTransaction");
 	}
+	const receipt = await prisma.receipt.findUnique({
+		where: { id: receiptId },
+	});
 
-	// Validate receipt if provided
-	if (receiptId) {
-		const receipt = await prisma.receipt.findUnique({
-			where: { id: receiptId },
-		});
+	if (!receipt) {
+		throw new AppError(404, "Receipt not found", "createTransaction");
+	}
 
-		if (!receipt) {
-			throw new AppError(404, "Receipt not found", "createTransaction");
-		}
-
-		if (receipt.userId !== userId) {
-			throw new AppError(
-				403,
-				"You are not authorized to use this receipt",
-				"createTransaction"
-			);
-		}
+	if (receipt.userId !== userId) {
+		throw new AppError(
+			403,
+			"You are not authorized to use this receipt",
+			"createTransaction"
+		);
 	}
 
 	// Validate category if provided
@@ -579,6 +579,29 @@ export const createTransaction = async (data: {
 			receipt: true,
 		},
 	});
+
+
+	const embedding = await generateEmbedding(summary);
+
+
+	await prisma.$executeRaw`
+		UPDATE receipts
+		SET summary = ${summary},
+		    embedding = ${`[${embedding.join(",")}]`}::vector
+		WHERE id = ${receiptId}
+	`;
+
+	// If clarificationSessionId is provided, update the session with the transaction ID and mark as completed
+	if (clarificationSessionId) {
+		await prisma.clarificationSession.update({
+			where: { id: clarificationSessionId },
+			data: {
+				transactionId: transaction.id,
+				status: "completed",
+				completedAt: new Date(),
+			},
+		});
+	}
 
 	return transaction;
 };

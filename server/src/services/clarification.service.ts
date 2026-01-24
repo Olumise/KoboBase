@@ -168,7 +168,8 @@ export const getClarificationSession = async (
 
 export const completeClarificationSession = async (
 	sessionId: string,
-	userId: string
+	userId: string,
+	transactionId?: string
 ) => {
 	if (!sessionId) {
 		throw new AppError(
@@ -215,6 +216,7 @@ export const completeClarificationSession = async (
 		data: {
 			status: "completed",
 			completedAt: new Date(),
+			...(transactionId && { transactionId }),
 		},
 		include: {
 			receipt: true,

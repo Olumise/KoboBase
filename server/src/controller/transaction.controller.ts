@@ -144,6 +144,22 @@ export const createTransactionController = async (
 		throw new AppError(401, "Unauthorized!", "createTransactionController");
 	}
 
+	if (!req.body.receiptId) {
+		throw new AppError(
+			400,
+			"Receipt ID is required!",
+			"createTransactionController"
+		);
+	}
+
+	if (!req.body.summary) {
+		throw new AppError(
+			400,
+			"Summary is required!",
+			"createTransactionController"
+		);
+	}
+
 	try {
 		const transactionData = {
 			...req.body,

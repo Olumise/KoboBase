@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id              String   @id
+  id              String    @default(uuid())@id
   name            String
   email           String
   emailVerified   Boolean  @default(false) @map("email_verified")
@@ -180,7 +180,7 @@ model Contact {
 }
 
 model Session {
-  id        String   @id
+  id        String    @default(uuid())@id
   expiresAt DateTime @map("expires_at")
   token     String
   createdAt DateTime @default(now()) @map("created_at")
@@ -197,7 +197,7 @@ model Session {
 }
 
 model Account {
-  id                    String    @id
+  id                    String    @default(uuid())@id
   accountId             String
   providerId            String    @map("provider_id")
   userId                String    @map("user_id")
@@ -218,7 +218,7 @@ model Account {
 }
 
 model Verification {
-  id         String   @id
+  id         String  @default(uuid()) @id
   identifier String
   value      String
   expiresAt  DateTime

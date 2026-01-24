@@ -63,13 +63,14 @@ export const completeClarificationSessionController = async (
 ) => {
 	const userId = req.user.id;
 	const { sessionId } = req.params;
+	const { transactionId } = req.body;
 
 	try {
 		if (!sessionId || typeof sessionId !== 'string') {
 			throw new AppError(400, "Session ID is required", "completeClarificationSessionController");
 		}
 
-		const session = await completeClarificationSession(sessionId, userId);
+		const session = await completeClarificationSession(sessionId, userId, transactionId);
 		res.send(session);
 	} catch (err) {
 		next(err);

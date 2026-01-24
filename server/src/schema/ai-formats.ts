@@ -5,6 +5,7 @@ export const TransactionReceiptSchema = z.object({
 	amount: z.number(),
 	currency: z.string(),
 	transaction_direction: z.string(),
+	payment_method:z.string(),
 	fees: z.number(),
 	description: z.string(),
 	category: z.string(),

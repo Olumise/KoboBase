@@ -1,0 +1,1237 @@
+{
+	"info": {
+		"name": "KoboBase API",
+		"description": "Complete API collection for KoboBase - Receipt Processing & Transaction Management",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Sign Up",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"John Doe\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/signup",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "signup"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Sign In",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/signin",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "signin"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Bank Accounts",
+			"item": [
+				{
+					"name": "Get Bank Accounts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/bank-account?userId={{user_id}}&isActive=true",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account"],
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								},
+								{
+									"key": "bankName",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "isActive",
+									"value": "true"
+								},
+								{
+									"key": "currency",
+									"value": "",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Bank Account",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"bankName\": \"GTBank\",\n  \"accountNumber\": \"0123456789\",\n  \"accountName\": \"John Doe\",\n  \"currency\": \"NGN\",\n  \"isPrimary\": true,\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/bank-account",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Match Bank Account",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"bankName\": \"GTBank\",\n  \"accountNumber\": \"0123456789\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/bank-account/match",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account", "match"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Primary Bank Account",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/bank-account/primary/:userId",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account", "primary", ":userId"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Bank Account by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/bank-account/:accountId?userId={{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account", ":accountId"],
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							],
+							"variable": [
+								{
+									"key": "accountId",
+									"value": "{{bank_account_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Bank Account",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"accountName\": \"Updated Account Name\",\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/bank-account/:accountId",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account", ":accountId"],
+							"variable": [
+								{
+									"key": "accountId",
+									"value": "{{bank_account_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set Primary Account",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/bank-account/:accountId/set-primary",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account", ":accountId", "set-primary"],
+							"variable": [
+								{
+									"key": "accountId",
+									"value": "{{bank_account_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Bank Account",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/bank-account/:accountId?userId={{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["bank-account", ":accountId"],
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							],
+							"variable": [
+								{
+									"key": "accountId",
+									"value": "{{bank_account_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Categories",
+			"item": [
+				{
+					"name": "Find Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"categoryName\": \"Groceries\",\n  \"userId\": \"{{user_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/category/find",
+							"host": ["{{base_url}}"],
+							"path": ["category", "find"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"name\": \"Entertainment\",\n  \"type\": \"EXPENSE\",\n  \"description\": \"Movies, games, and leisure\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/category",
+							"host": ["{{base_url}}"],
+							"path": ["category"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/category/all",
+							"host": ["{{base_url}}"],
+							"path": ["category", "all"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get System Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/category/system",
+							"host": ["{{base_url}}"],
+							"path": ["category", "system"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/category/user/:userId",
+							"host": ["{{base_url}}"],
+							"path": ["category", "user", ":userId"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Created Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/category/user/:userId/created",
+							"host": ["{{base_url}}"],
+							"path": ["category", "user", ":userId", "created"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Category by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/category/:categoryId?userId={{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["category", ":categoryId"],
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							],
+							"variable": [
+								{
+									"key": "categoryId",
+									"value": "{{category_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"name\": \"Updated Category Name\",\n  \"description\": \"Updated description\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/category/:categoryId",
+							"host": ["{{base_url}}"],
+							"path": ["category", ":categoryId"],
+							"variable": [
+								{
+									"key": "categoryId",
+									"value": "{{category_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/category/:categoryId?userId={{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["category", ":categoryId"],
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							],
+							"variable": [
+								{
+									"key": "categoryId",
+									"value": "{{category_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Contacts",
+			"item": [
+				{
+					"name": "Find Contact",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"contactName\": \"Shoprite\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/contact/find",
+							"host": ["{{base_url}}"],
+							"path": ["contact", "find"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Contact",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Shoprite\",\n  \"type\": \"merchant\",\n  \"email\": \"contact@shoprite.com\",\n  \"phoneNumber\": \"+234123456789\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/contact",
+							"host": ["{{base_url}}"],
+							"path": ["contact"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Search Contacts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/contact/search?searchTerm=shop&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["contact", "search"],
+							"query": [
+								{
+									"key": "searchTerm",
+									"value": "shop"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Contacts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/contact/all?limit=50",
+							"host": ["{{base_url}}"],
+							"path": ["contact", "all"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Contact by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/contact/:contactId",
+							"host": ["{{base_url}}"],
+							"path": ["contact", ":contactId"],
+							"variable": [
+								{
+									"key": "contactId",
+									"value": "{{contact_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Contact",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Contact Name\",\n  \"email\": \"newemail@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/contact/:contactId",
+							"host": ["{{base_url}}"],
+							"path": ["contact", ":contactId"],
+							"variable": [
+								{
+									"key": "contactId",
+									"value": "{{contact_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Increment Transaction Count",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"transactionDate\": \"2024-01-23T10:00:00Z\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/contact/:contactId/increment",
+							"host": ["{{base_url}}"],
+							"path": ["contact", ":contactId", "increment"],
+							"variable": [
+								{
+									"key": "contactId",
+									"value": "{{contact_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Receipts",
+			"item": [
+				{
+					"name": "Add Receipt",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "receipt",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/receipt/add",
+							"host": ["{{base_url}}"],
+							"path": ["receipt", "add"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Extract Receipt",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/receipt/extract/:receiptId",
+							"host": ["{{base_url}}"],
+							"path": ["receipt", "extract", ":receiptId"],
+							"variable": [
+								{
+									"key": "receiptId",
+									"value": "{{receipt_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Receipt File",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "receipt",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/receipt/update-file/:receiptId",
+							"host": ["{{base_url}}"],
+							"path": ["receipt", "update-file", ":receiptId"],
+							"variable": [
+								{
+									"key": "receiptId",
+									"value": "{{receipt_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Transactions",
+			"item": [
+				{
+					"name": "Generate Transaction",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"input\": \"Receipt text or OCR data here\",\n  \"clarificationId\": \"optional-clarification-id\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction/generate",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "generate"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Initiate Transaction from Receipt",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"receiptId\": \"{{receipt_id}}\",\n  \"userBankAccountId\": \"{{bank_account_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction/initiate",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "initiate"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Transactions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction?transactionType=EXPENSE&limit=50&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["transaction"],
+							"query": [
+								{
+									"key": "transactionType",
+									"value": "EXPENSE",
+									"description": "INCOME or EXPENSE"
+								},
+								{
+									"key": "categoryId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "contactId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "startDate",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "endDate",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "status",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Transaction Stats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/stats?startDate=&endDate=",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "stats"],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "",
+									"description": "YYYY-MM-DD"
+								},
+								{
+									"key": "endDate",
+									"value": "",
+									"description": "YYYY-MM-DD"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Transaction by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/:transactionId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", ":transactionId"],
+							"variable": [
+								{
+									"key": "transactionId",
+									"value": "{{transaction_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Transaction",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 5000,\n  \"currency\": \"NGN\",\n  \"transactionType\": \"EXPENSE\",\n  \"transactionDate\": \"2024-01-23T10:00:00Z\",\n  \"description\": \"Grocery shopping\",\n  \"categoryId\": \"optional-category-id\",\n  \"contactId\": \"optional-contact-id\",\n  \"userBankAccountId\": \"optional-bank-account-id\",\n  \"paymentMethod\": \"CARD\",\n  \"status\": \"CONFIRMED\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction",
+							"host": ["{{base_url}}"],
+							"path": ["transaction"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Transaction",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 6000,\n  \"description\": \"Updated description\",\n  \"status\": \"CONFIRMED\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction/:transactionId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", ":transactionId"],
+							"variable": [
+								{
+									"key": "transactionId",
+									"value": "{{transaction_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Transaction",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/:transactionId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", ":transactionId"],
+							"variable": [
+								{
+									"key": "transactionId",
+									"value": "{{transaction_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Clarification",
+			"item": [
+				{
+					"name": "Create Clarification Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"receiptId\": \"{{receipt_id}}\",\n  \"extractedData\": \"Optional extracted data from receipt\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/clarification/create",
+							"host": ["{{base_url}}"],
+							"path": ["clarification", "create"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Clarification Session",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/clarification/session/:sessionId",
+							"host": ["{{base_url}}"],
+							"path": ["clarification", "session", ":sessionId"],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": "{{session_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Clarification Sessions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/clarification/sessions?receiptId=",
+							"host": ["{{base_url}}"],
+							"path": ["clarification", "sessions"],
+							"query": [
+								{
+									"key": "receiptId",
+									"value": "",
+									"description": "Optional: filter by receipt"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Send Clarification Message",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"This was a grocery purchase at Shoprite\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/clarification/session/:sessionId/message",
+							"host": ["{{base_url}}"],
+							"path": ["clarification", "session", ":sessionId", "message"],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": "{{session_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Handle Confirmation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"confirmations\": {\n    \"get_or_create_category\": true,\n    \"get_or_create_contact\": true\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/clarification/session/:sessionId/confirm",
+							"host": ["{{base_url}}"],
+							"path": ["clarification", "session", ":sessionId", "confirm"],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": "{{session_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Complete Clarification Session",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/clarification/session/:sessionId/complete",
+							"host": ["{{base_url}}"],
+							"path": ["clarification", "session", ":sessionId", "complete"],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": "{{session_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
