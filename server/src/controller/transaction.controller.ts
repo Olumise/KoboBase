@@ -144,14 +144,6 @@ export const createTransactionController = async (
 		throw new AppError(401, "Unauthorized!", "createTransactionController");
 	}
 
-	if (!req.body.receiptId) {
-		throw new AppError(
-			400,
-			"Receipt ID is required!",
-			"createTransactionController"
-		);
-	}
-
 	if (!req.body.summary) {
 		throw new AppError(
 			400,
@@ -160,13 +152,19 @@ export const createTransactionController = async (
 		);
 	}
 
+	if (!req.body.transactionDate) {
+		throw new AppError(
+			400,
+			"Transaction date is required!",
+			"createTransactionController"
+		);
+	}
+
 	try {
 		const transactionData = {
 			...req.body,
 			userId,
-			transactionDate: req.body.transactionDate
-				? new Date(req.body.transactionDate)
-				: new Date(),
+			transactionDate: new Date(req.body.transactionDate),
 		};
 
 		const transaction = await createTransaction(transactionData);

@@ -40,8 +40,6 @@ model Receipt {
   processingStatus String                       @default("pending") @map("processing_status") @db.VarChar(20)
   uploadedAt       DateTime                     @default(now()) @map("uploaded_at")
   processedAt      DateTime?                    @map("processed_at")
-  embedding        Unsupported("vector(1536)")?
-  summary          String?                      @db.Text
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions          Transaction[]
@@ -75,7 +73,8 @@ model Transaction {
   referenceNumber   String?                      @map("reference_number") @db.VarChar(100)
   aiConfidence      Decimal?                     @map("ai_confidence") @db.Decimal(5, 2)
   status            TransactionStatus            @default(CONFIRMED)
-
+  summary           String?                      @db.Text
+  embedding         Unsupported("vector(1536)")?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

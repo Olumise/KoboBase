@@ -583,12 +583,11 @@ export const createTransaction = async (data: {
 
 	const embedding = await generateEmbedding(summary);
 
-
 	await prisma.$executeRaw`
-		UPDATE receipts
+		UPDATE transactions
 		SET summary = ${summary},
 		    embedding = ${`[${embedding.join(",")}]`}::vector
-		WHERE id = ${receiptId}
+		WHERE id = ${transaction.id}
 	`;
 
 	// If clarificationSessionId is provided, update the session with the transaction ID and mark as completed
