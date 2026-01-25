@@ -13,6 +13,7 @@ import {
 	generateConfirmationQuestion,
 } from "../config/toolConfirmations";
 import { BATCH_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS } from "../lib/prompts";
+import { initiateSequentialProcessing } from "./sequentialExtraction.service";
 import * as z from "zod";
 
 export const initiateBatchTransactionsFromReceipt = async (
@@ -48,6 +49,18 @@ export const initiateBatchTransactionsFromReceipt = async (
 		throw new AppError(400, "Receipt has no extracted text!", "initiateBatchTransactionsFromReceipt");
 	}
 
+	const existingSession = await prisma.batchSession.findFirst({
+		where: {
+			receiptId,
+			userId,
+			status: "in_progress",
+		},
+	});
+
+	if (existingSession && existingSession.processingMode === "sequential") {
+		return initiateSequentialProcessing(receiptId, userId, userBankAccountId);
+	}
+
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
 		select: { id: true, name: true, defaultCurrency: true },
@@ -69,7 +82,7 @@ export const initiateBatchTransactionsFromReceipt = async (
 		throw new AppError(404, "Bank account not found or inactive!", "initiateBatchTransactionsFromReceipt");
 	}
 
-	const existingBatchSession = await prisma.batchSession.findFirst({
+	let existingBatchSession = await prisma.batchSession.findFirst({
 		where: {
 			receiptId,
 			userId,
@@ -77,28 +90,20 @@ export const initiateBatchTransactionsFromReceipt = async (
 		},
 	});
 
-	if (existingBatchSession) {
-		const clarificationSessions = await prisma.clarificationSession.findMany({
-			where: {
-				receiptId,
-				userId,
-				status: { in: ["active", "pending_confirmation"] },
-			},
-			include: {
-				clarificationMessages: {
-					orderBy: { createdAt: "asc" },
-				},
-			},
-		});
+	if (existingBatchSession && existingBatchSession.processingMode === "batch") {
+		const extractedData = existingBatchSession.extractedData as any;
+		const hasTransactionResults = extractedData?.transaction_results && extractedData.transaction_results.length > 0;
 
-		return {
-			batch_session_id: existingBatchSession.id,
-			total_transactions: existingBatchSession.totalExpected || 0,
-			successfully_initiated: existingBatchSession.totalProcessed || 0,
-			transactions: [],
-			overall_confidence: 0,
-			processing_notes: "Batch session already in progress. Please complete existing clarifications.",
-		};
+		if (hasTransactionResults) {
+			return {
+				batch_session_id: existingBatchSession.id,
+				total_transactions: existingBatchSession.totalExpected || 0,
+				successfully_initiated: existingBatchSession.totalProcessed || 0,
+				transactions: extractedData.transaction_results,
+				overall_confidence: 0,
+				processing_notes: "Batch session already in progress.",
+			};
+		}
 	}
 
 	const llmWithTools = OpenAIllmCreative.bindTools(allAITools, {});
@@ -157,23 +162,39 @@ export const initiateBatchTransactionsFromReceipt = async (
 
 	console.log("Auto tool results:", JSON.stringify(autoToolResults, null, 2));
 
-	const batchSession = await prisma.batchSession.create({
-		data: {
-			receiptId,
-			userId,
-			totalExpected: 0,
-			totalProcessed: 0,
-			currentIndex: 0,
-			status: "in_progress",
-			processingMode: "batch",
-			extractedData: {
-				aiResponse: typeof aiResponse.content === 'string' ? aiResponse.content : JSON.stringify(aiResponse.content),
-				toolCalls: toolCalls.map(tc => ({ name: tc.name, args: tc.args, id: tc.id })),
-				autoToolResults: autoToolResults,
-				confirmationTools: confirmationTools.map(tc => ({ name: tc.name, args: tc.args, id: tc.id })),
+	let batchSession;
+	if (existingBatchSession && existingBatchSession.processingMode === "batch") {
+		batchSession = await prisma.batchSession.update({
+			where: { id: existingBatchSession.id },
+			data: {
+				extractedData: {
+					...(existingBatchSession.extractedData as any),
+					aiResponse: typeof aiResponse.content === 'string' ? aiResponse.content : JSON.stringify(aiResponse.content),
+					toolCalls: toolCalls.map(tc => ({ name: tc.name, args: tc.args, id: tc.id })),
+					autoToolResults: autoToolResults,
+					confirmationTools: confirmationTools.map(tc => ({ name: tc.name, args: tc.args, id: tc.id })),
+				},
 			},
-		},
-	});
+		});
+	} else {
+		batchSession = await prisma.batchSession.create({
+			data: {
+				receiptId,
+				userId,
+				totalExpected: 0,
+				totalProcessed: 0,
+				currentIndex: 0,
+				status: "in_progress",
+				processingMode: "batch",
+				extractedData: {
+					aiResponse: typeof aiResponse.content === 'string' ? aiResponse.content : JSON.stringify(aiResponse.content),
+					toolCalls: toolCalls.map(tc => ({ name: tc.name, args: tc.args, id: tc.id })),
+					autoToolResults: autoToolResults,
+					confirmationTools: confirmationTools.map(tc => ({ name: tc.name, args: tc.args, id: tc.id })),
+				},
+			},
+		});
+	}
 
 	if (confirmationTools.length > 0) {
 		const clarificationSessions = [];

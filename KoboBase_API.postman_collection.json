@@ -1200,6 +1200,145 @@
 						"description": "Reject an entire batch session without creating any transactions."
 					},
 					"response": []
+				},
+				{
+					"name": "Initiate Sequential Processing",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userBankAccountId\": \"{{bank_account_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction/sequential/initiate/:receiptId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "sequential", "initiate", ":receiptId"],
+							"variable": [
+								{
+									"key": "receiptId",
+									"value": "{{receipt_id}}",
+									"description": "Receipt ID with multiple transactions to process one at a time"
+								}
+							]
+						},
+						"description": "Initiates sequential transaction processing for multi-transaction receipts. Returns the first transaction for review. Allows processing one transaction at a time with clarifications."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current Sequential Transaction",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/sequential/current/:batchSessionId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "sequential", "current", ":batchSessionId"],
+							"variable": [
+								{
+									"key": "batchSessionId",
+									"value": "{{batch_session_id}}",
+									"description": "Batch session ID for sequential processing"
+								}
+							]
+						},
+						"description": "Gets the current transaction in the sequential processing flow."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Sequential Transaction and Move to Next",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"batchSessionId\": \"{{batch_session_id}}\",\n  \"edits\": {\n    \"categoryId\": \"optional-category-id\",\n    \"contactId\": \"optional-contact-id\",\n    \"amount\": 5000,\n    \"description\": \"Updated description\",\n    \"transactionDate\": \"2024-01-23T10:00:00Z\",\n    \"paymentMethod\": \"CARD\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction/sequential/approve-and-next",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "sequential", "approve-and-next"]
+						},
+						"description": "Approves the current transaction in sequential processing, creates it in the database, and returns the next transaction. Edits are optional."
+					},
+					"response": []
+				},
+				{
+					"name": "Skip Sequential Transaction",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/sequential/skip/:batchSessionId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "sequential", "skip", ":batchSessionId"],
+							"variable": [
+								{
+									"key": "batchSessionId",
+									"value": "{{batch_session_id}}",
+									"description": "Batch session ID for sequential processing"
+								}
+							]
+						},
+						"description": "Skips the current transaction without creating it and moves to the next transaction in the sequential flow."
+					},
+					"response": []
+				},
+				{
+					"name": "Complete Sequential Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/sequential/complete/:batchSessionId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "sequential", "complete", ":batchSessionId"],
+							"variable": [
+								{
+									"key": "batchSessionId",
+									"value": "{{batch_session_id}}",
+									"description": "Batch session ID to complete"
+								}
+							]
+						},
+						"description": "Marks the sequential processing session as complete. Returns summary statistics including total transactions, processed count, and skipped count."
+					},
+					"response": []
 				}
 			]
 		},

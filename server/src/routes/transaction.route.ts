@@ -12,6 +12,11 @@ import {
 	getBatchExtractionStatusController,
 	approveBatchTransactionsController,
 	rejectBatchSessionController,
+	initiateSequentialProcessingController,
+	getCurrentSequentialTransactionController,
+	approveSequentialTransactionController,
+	skipSequentialTransactionController,
+	completeSequentialSessionController,
 } from "../controller/transaction.controller";
 import { authVerify } from "../middlewares/authVerify";
 
@@ -24,6 +29,11 @@ transactionRouter.post("/batch/extract/:receiptId", authVerify, extractBatchTran
 transactionRouter.get("/batch/status/:receiptId", authVerify, getBatchExtractionStatusController);
 transactionRouter.post("/batch/approve", authVerify, approveBatchTransactionsController);
 transactionRouter.post("/batch/reject/:batchSessionId", authVerify, rejectBatchSessionController);
+transactionRouter.post("/sequential/initiate/:receiptId", authVerify, initiateSequentialProcessingController);
+transactionRouter.get("/sequential/current/:batchSessionId", authVerify, getCurrentSequentialTransactionController);
+transactionRouter.post("/sequential/approve-and-next", authVerify, approveSequentialTransactionController);
+transactionRouter.post("/sequential/skip/:batchSessionId", authVerify, skipSequentialTransactionController);
+transactionRouter.post("/sequential/complete/:batchSessionId", authVerify, completeSequentialSessionController);
 transactionRouter.get("/", authVerify, getUserTransactionsController);
 transactionRouter.get("/stats", authVerify, getTransactionStatsController);
 transactionRouter.get("/:transactionId", authVerify, getTransactionByIdController);

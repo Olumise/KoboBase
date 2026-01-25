@@ -72,20 +72,36 @@ CRITICAL DISTINCTION - User Questions vs. User Providing Data:
 
 Enrichment Data Population from Tool Results:
 - CRITICAL: When Tool Results are provided in the context, you MUST extract IDs and populate enrichment_data
-- Tool Results JSON format: {"tool_name": {"success": true, "data": {...}}}
+- Tool Results structure: {"tool_name": {"success": true, "data": {...actual tool response...}}}
 - Extraction rules:
   1. category_id:
-     - get_category returns: {"success": true, "data": {"found": true, "category": {"id": "cat_123", "name": "Food", "matchConfidence": 0.85}, "allCategories": [...]}}
-     - If found=true and matchConfidence > 0.5: Extract category.id
-     - If found=false or no good match: You must analyze data.allCategories array and determine best match based on transaction description
-     - Set category_id to the ID of your chosen category, or null if none match
-  2. contact_id: Extract from toolResults.get_or_create_contact.data.id (the external party's contact)
-  3. user_bank_account_id: Match user's bank name against toolResults.get_bank_accounts.data.accounts array
+     - Tool result path: toolResults.get_category.data.categories (this is an array)
+     - The data structure is: {"success": true, "data": {"success": true, "categories": [{"id": "cat_123", "name": "Groceries"}, ...]}}
+     - CRITICAL STEPS TO EXTRACT category_id:
+       a) Determine the best category NAME for the transaction based on the description (e.g., "Groceries")
+       b) Access the array at toolResults.get_category.data.categories
+       c) Find the category object in that array where the "name" field matches your chosen category (case-insensitive match)
+       d) Extract that category object's "id" field and set it as enrichment_data.category_id
+     - EXAMPLE: If you chose category="Groceries" and toolResults.get_category.data.categories contains [{"id": "abc-123", "name": "Groceries"}, {"id": "def-456", "name": "Food"}], you MUST set category_id="abc-123"
+     - If the categories array is empty OR no matching category name is found, set category_id to null
+     - NEVER leave category_id undefined - it must be either a valid UUID string OR null
+  2. contact_id:
+     - Tool result path: toolResults.get_or_create_contact.data.id
+     - Structure: {"success": true, "data": {"id": "contact_uuid", "name": "...", ...}}
+     - Extract the "id" field from the data object
+     - NEVER leave contact_id undefined - it must be either a valid UUID string OR null
+  3. user_bank_account_id:
+     - Tool result path: toolResults.get_bank_account_by_id.data.account.id OR toolResults.get_bank_accounts.data.accounts
+     - For get_bank_account_by_id: Extract .data.account.id directly
+     - For get_bank_accounts: Match user's bank name against .data.accounts array, extract matching account's id
      - For OUTBOUND: match sender_bank (user's bank) → extract account id
      - For INBOUND: match receiver_bank (user's bank) → extract account id
-     - Look for account where bankName matches the user's bank in the transaction
-  4. to_bank_account_id: Only for self-transfers, match destination bank to get its account id
-  5. is_self_transaction: true if BOTH sender_bank AND receiver_bank exist in get_bank_accounts results, false otherwise
+     - NEVER leave user_bank_account_id undefined - it must be either a valid UUID string OR null
+  4. to_bank_account_id:
+     - Only for self-transfers, match destination bank to get its account id
+     - Otherwise set to null
+  5. is_self_transaction:
+     - true if BOTH sender_bank AND receiver_bank exist in get_bank_accounts results, false otherwise
 - Example category matching:
   - If get_category returns found=true with category.id="cat_123", use that
   - If get_category returns found=false, review allCategories and pick best match based on transaction context
@@ -129,8 +145,9 @@ YOU MUST CALL TOOLS IMMEDIATELY IN YOUR FIRST RESPONSE. DO NOT generate question
 If you have not yet called these tools, you MUST call them in this response:
 1. get_bank_account_by_id (with userBankAccountId: {userBankAccountId})
 2. get_category (with transactionDescription from receipt and userId: {userId})
-3. validate_transaction_type (with type inferred from receipt and userId: {userId})
-4. get_or_create_contact (with external party name and userId: {userId})
+3. get_or_create_contact (with external party name and userId: {userId})
+
+NOTE: validate_transaction_type should be called during final extraction when transaction details are complete, not during initial tool gathering.
 
 DO NOT return a response saying "Need to call X tool" - CALL THE TOOLS IMMEDIATELY.
 
@@ -142,10 +159,17 @@ DO NOT return a response saying "Need to call X tool" - CALL THE TOOLS IMMEDIATE
    Parameters: { transactionDescription: string, userId: string }
 
 3. get_or_create_contact - Find/create external party contact
-   Parameters: { name: string, userId: string }
+   Parameters: { contactName: string, userId: string }
 
-4. validate_transaction_type - Verify transaction type
-   Parameters: { type: string, userId: string }
+4. validate_transaction_type - Verify transaction type (call ONLY during final extraction when transaction details are complete)
+   Parameters: {
+     proposedType: "income"|"expense"|"transfer"|"refund"|"fee"|"adjustment",
+     amount: number,
+     description?: string,
+     contactName?: string,
+     transactionDirection?: "inbound"|"outbound",
+     isSelfTransaction?: boolean
+   }
 
 5. get_bank_accounts - List user's bank accounts (only if needed for validation)
    Parameters: { userId: string }
@@ -193,15 +217,19 @@ PHASE 1: AUTOMATIC TOOL CALLING (DO THIS FIRST)
 REQUIRED TOOL CALLS (make ALL in parallel if not yet called):
 • get_bank_account_by_id({ accountId: {userBankAccountId}, userId: {userId} })
 • get_category({ transactionDescription: "<description from receipt>", userId: {userId} })
-• validate_transaction_type({ type: "<inferred type>", userId: {userId} })
 • get_or_create_contact({ name: "<external party name>", userId: {userId} })
+
+NOTE: Do NOT call validate_transaction_type during initial tool gathering - this will be done during final extraction when full transaction details are available.
 
 PHASE 2: EXTRACT & POPULATE (after tools return results)
 Extract from tool results:
-- category_id: Pick best matching category.id from get_category response
-- contact_id: Extract id from get_or_create_contact response
+- category_id:
+  * First, determine the best category NAME for this transaction based on the description
+  * Then, search toolResults.get_category.categories array for a category with matching name
+  * Extract the ID of the matching category object
+  * CRITICAL: The category_id must come from toolResults.get_category.categories[].id, NOT invented
+- contact_id: Extract id from get_or_create_contact response (toolResults.get_or_create_contact.id)
 - user_bank_account_id: Use {userBankAccountId} from context
-- transaction_type: Use validated type from validate_transaction_type
 - sender_name/receiver_name: Use contact name from get_or_create_contact (for external party)
 - sender_bank/receiver_bank: Use bank info from get_bank_account_by_id (for user's bank)
 
@@ -297,13 +325,13 @@ TOOL CALLING STRATEGY:
   * get_category (once per transaction with its description)
   * get_or_create_contact (once per transaction with its contact name)
   * get_bank_account_by_id (shared - call once with {userBankAccountId})
-  * validate_transaction_type (once per transaction with its type)
+
+NOTE: Do NOT call validate_transaction_type during initial tool gathering - this will be done during final extraction when full transaction details (including amounts) are available.
 
 EXAMPLE: For 3 transactions (groceries from John, Netflix subscription, salary from Company):
 - get_bank_account_by_id: 1 call (shared, userBankAccountId: {userBankAccountId})
 - get_or_create_contact: 3 calls (John Doe, Netflix, Company XYZ)
 - get_category: 3 calls (groceries description, subscription description, salary description)
-- validate_transaction_type: 3 calls (expense, expense, income)
 
 === REUSE BASE INSTRUCTIONS ===
 

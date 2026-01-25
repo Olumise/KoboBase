@@ -86,9 +86,10 @@ export const DocumentDetectionSchema = z.object({
 
 	processing_mode: z.enum([
 		"single",
-		"batch"
+		"batch",
+		"sequential"
 	]).describe(
-		"Recommended processing mode: 'single' for 1 transaction, 'batch' for 2+ transactions"
+		"Recommended processing mode: 'single' for 1 transaction, 'batch' for 2+ transactions (all at once), 'sequential' for 2+ transactions (one at a time)"
 	),
 
 	confidence: z.number().min(0).max(1).describe(

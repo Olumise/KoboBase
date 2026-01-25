@@ -5,7 +5,11 @@ import {
 	createClarificationSessionSchema,
 	CreateClarificationSessionType,
 } from "../schema/clarification";
-import { TransactionReceiptAiResponseSchema } from "../schema/ai-formats";
+import {
+	TransactionReceiptAiResponseSchema,
+	BatchTransactionInitiationResponse,
+	BatchTransactionInitiationItem,
+} from "../schema/ai-formats";
 import { RECEIPT_TRANSACTION_SYSTEM_PROMPT } from "../lib/prompts";
 import { executeAITool } from "./aiToolExecutor.service";
 import { allAITools } from "../tools";
@@ -256,7 +260,21 @@ export const sendClarificationMessage = async (
 	sessionId: string,
 	userId: string,
 	message: string
-) => {
+): Promise<BatchTransactionInitiationResponse | {
+	userMessage: string;
+	aiResponse: any;
+	aiMessage: any;
+	sessionId: string;
+	isComplete: boolean;
+	transaction: any;
+} | {
+	userMessage: string;
+	needsConfirmation: boolean;
+	questions: any[];
+	pendingToolCalls: any[];
+	sessionId: string;
+	status: string;
+}> => {
 	if (!sessionId) {
 		throw new AppError(400, "Session Id required!", "sendClarificationMessage");
 	}
@@ -407,7 +425,28 @@ export const sendClarificationMessage = async (
 		...conversationHistory.slice(1),
 		{
 			role: "user",
-			content: "Evaluate the transaction based on the conversation history and tool results. Extract IDs from tool results and populate enrichment_data fields. Follow all validation rules including description validation.",
+			content: `Evaluate the transaction based on the conversation history and tool results.
+
+CRITICAL - Extract IDs from tool results (nested structure {"success": true, "data": {...}}):
+
+1. category_id:
+   - First, determine the best category NAME for this transaction (e.g., "Groceries", "Food", "Transport")
+   - Access toolResults.get_category.data.categories array
+   - Find the category object whose "name" field matches your chosen category (case-insensitive)
+   - Extract that category's "id" field
+   - MUST be a valid UUID string OR null (if no match or empty array)
+
+2. contact_id:
+   - Access toolResults.get_or_create_contact.data.id
+   - This is the UUID of the external party (recipient or sender)
+   - MUST be a valid UUID string OR null
+
+3. user_bank_account_id:
+   - Access toolResults.get_bank_account_by_id.data.account.id
+   - This is the UUID of the user's bank account
+   - MUST be a valid UUID string OR null
+
+Populate ALL enrichment_data fields. NEVER leave any field undefined. Follow all validation rules including description validation.`,
 		},
 	];
 
@@ -438,6 +477,60 @@ export const sendClarificationMessage = async (
 		};
 	}
 
+	const batchSession = await prisma.batchSession.findFirst({
+		where: {
+			receiptId: session.receiptId,
+			userId,
+			status: "in_progress",
+			processingMode: "sequential",
+		},
+	});
+
+	if (batchSession) {
+		const extractedData = batchSession.extractedData as any;
+		const transactionResults = extractedData?.transaction_results || [];
+		const currentIndex = batchSession.currentIndex || 0;
+
+		if (currentIndex < transactionResults.length) {
+			const currentTransaction = {
+				transaction_index: currentIndex,
+				needs_clarification: aiResponse.is_complete === "false",
+				needs_confirmation: false,
+				clarification_session_id: session.id,
+				is_complete: aiResponse.is_complete,
+				confidence_score: aiResponse.confidence_score,
+				transaction: aiResponse.transaction,
+				missing_fields: aiResponse.missing_fields,
+				questions: aiResponse.questions,
+				enrichment_data: aiResponse.enrichment_data,
+				notes: aiResponse.notes,
+			};
+
+			transactionResults[currentIndex] = currentTransaction;
+
+			await prisma.batchSession.update({
+				where: { id: batchSession.id },
+				data: {
+					extractedData: {
+						...extractedData,
+						transaction_results: transactionResults,
+					},
+				},
+			});
+
+			return {
+				batch_session_id: batchSession.id,
+				total_transactions: transactionResults.length,
+				successfully_initiated: aiResponse.is_complete === "true" ? 1 : 0,
+				transactions: [currentTransaction],
+				overall_confidence: aiResponse.confidence_score,
+				processing_notes: aiResponse.is_complete === "true"
+					? `Transaction ${currentIndex + 1} of ${transactionResults.length} is now complete and ready for approval.`
+					: `Transaction ${currentIndex + 1} of ${transactionResults.length} still needs clarification.`,
+			};
+		}
+	}
+
 	return {
 		userMessage: message,
 		aiResponse: aiResponse,
@@ -452,7 +545,13 @@ export const handleConfirmationResponse = async (
 	sessionId: string,
 	userId: string,
 	confirmations: Record<string, boolean>
-) => {
+): Promise<BatchTransactionInitiationResponse | {
+	success: boolean;
+	toolResults: any;
+	aiResponse: any;
+	isComplete: boolean;
+	transaction: any;
+}> => {
 	const session = await prisma.clarificationSession.findUnique({
 		where: { id: sessionId },
 		include: { receipt: true },
@@ -511,7 +610,28 @@ export const handleConfirmationResponse = async (
 		})),
 		{
 			role: "user",
-			content: "Evaluate the transaction based on the conversation history and tool results (including the tools I just confirmed). Extract IDs from tool results and populate enrichment_data fields. Follow all validation rules including description validation.",
+			content: `Evaluate the transaction based on the conversation history and tool results (including the tools I just confirmed).
+
+CRITICAL - Extract IDs from tool results (nested structure {"success": true, "data": {...}}):
+
+1. category_id:
+   - First, determine the best category NAME for this transaction (e.g., "Groceries", "Food", "Transport")
+   - Access toolResults.get_category.data.categories array
+   - Find the category object whose "name" field matches your chosen category (case-insensitive)
+   - Extract that category's "id" field
+   - MUST be a valid UUID string OR null (if no match or empty array)
+
+2. contact_id:
+   - Access toolResults.get_or_create_contact.data.id
+   - This is the UUID of the external party (recipient or sender)
+   - MUST be a valid UUID string OR null
+
+3. user_bank_account_id:
+   - Access toolResults.get_bank_account_by_id.data.account.id
+   - This is the UUID of the user's bank account
+   - MUST be a valid UUID string OR null
+
+Populate ALL enrichment_data fields. NEVER leave any field undefined. Follow all validation rules including description validation.`,
 		},
 	];
 
@@ -540,6 +660,60 @@ export const handleConfirmationResponse = async (
 			toBankAccountId: aiResponse.enrichment_data?.to_bank_account_id,
 			isSelfTransaction: aiResponse.enrichment_data?.is_self_transaction || false,
 		};
+	}
+
+	const batchSession = await prisma.batchSession.findFirst({
+		where: {
+			receiptId: session.receiptId,
+			userId,
+			status: "in_progress",
+			processingMode: "sequential",
+		},
+	});
+
+	if (batchSession) {
+		const extractedData = batchSession.extractedData as any;
+		const transactionResults = extractedData?.transaction_results || [];
+		const currentIndex = batchSession.currentIndex || 0;
+
+		if (currentIndex < transactionResults.length) {
+			const currentTransaction = {
+				transaction_index: currentIndex,
+				needs_clarification: aiResponse.is_complete === "false",
+				needs_confirmation: false,
+				clarification_session_id: session.id,
+				is_complete: aiResponse.is_complete,
+				confidence_score: aiResponse.confidence_score,
+				transaction: aiResponse.transaction,
+				missing_fields: aiResponse.missing_fields,
+				questions: aiResponse.questions,
+				enrichment_data: aiResponse.enrichment_data,
+				notes: aiResponse.notes,
+			};
+
+			transactionResults[currentIndex] = currentTransaction;
+
+			await prisma.batchSession.update({
+				where: { id: batchSession.id },
+				data: {
+					extractedData: {
+						...extractedData,
+						transaction_results: transactionResults,
+					},
+				},
+			});
+
+			return {
+				batch_session_id: batchSession.id,
+				total_transactions: transactionResults.length,
+				successfully_initiated: aiResponse.is_complete === "true" ? 1 : 0,
+				transactions: [currentTransaction],
+				overall_confidence: aiResponse.confidence_score,
+				processing_notes: aiResponse.is_complete === "true"
+					? `Transaction ${currentIndex + 1} of ${transactionResults.length} is now complete and ready for approval.`
+					: `Transaction ${currentIndex + 1} of ${transactionResults.length} still needs clarification.`,
+			};
+		}
 	}
 
 	return {

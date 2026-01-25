@@ -19,6 +19,7 @@ const DOCUMENT_DETECTION_PROMPT = `You are a financial document analyzer. Your t
 
 3. **Processing Mode Recommendation**:
    - single: For 1 transaction
+   - sequential: For 2+ transactions (processed one at a time)
    - batch: For 2+ transactions (can be processed and reviewed together)
 
 4. **Document Characteristics**: Analyze the structure and format
@@ -74,7 +75,7 @@ export const detectDocumentType = async (
 
 export const determineProcessingMode = (
 	detection: DocumentDetection
-): "single" | "batch" => {
+): "single" | "batch" | "sequential" => {
 	const { transaction_count, confidence } = detection;
 
 	if (confidence < 0.6 || transaction_count === 0) {
@@ -84,6 +85,6 @@ export const determineProcessingMode = (
 	if (transaction_count === 1) {
 		return "single";
 	} else {
-		return "batch";
+		return "sequential";
 	}
 };

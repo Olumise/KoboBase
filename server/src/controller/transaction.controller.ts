@@ -12,7 +12,13 @@ import {
 } from "../services/transaction.service";
 import { initiateBatchTransactionsFromReceipt, getBatchExtractionStatus } from "../services/batchExtraction.service";
 import { approveBatchTransactions, rejectBatchSession } from "../services/batchApproval.service";
-import { prisma } from "../lib/prisma";
+import {
+	initiateSequentialProcessing,
+	getCurrentSequentialTransaction,
+	approveSequentialTransaction,
+	skipSequentialTransaction,
+	completeSequentialSession,
+} from "../services/sequentialExtraction.service";
 
 export const generateTransactionController = async (
 	req: Request,
@@ -381,6 +387,159 @@ export const rejectBatchSessionController = async (
 		const result = await rejectBatchSession(batchSessionId, userId);
 
 		res.status(200).json(result);
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const initiateSequentialProcessingController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const receiptId = req.params.receiptId as string;
+	const { userBankAccountId } = req.body;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "initiateSequentialProcessingController");
+	}
+
+	if (!receiptId || typeof receiptId !== 'string') {
+		throw new AppError(400, "Receipt ID is required", "initiateSequentialProcessingController");
+	}
+
+	if (!userBankAccountId) {
+		throw new AppError(400, "Bank Account ID is required", "initiateSequentialProcessingController");
+	}
+
+	try {
+		const sequentialInitiation = await initiateSequentialProcessing(
+			receiptId,
+			userId,
+			userBankAccountId
+		);
+
+		res.status(200).json({
+			message: "Sequential processing initiated successfully",
+			data: sequentialInitiation
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getCurrentSequentialTransactionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const batchSessionId = req.params.batchSessionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "getCurrentSequentialTransactionController");
+	}
+
+	if (!batchSessionId || typeof batchSessionId !== 'string') {
+		throw new AppError(400, "Batch session ID is required", "getCurrentSequentialTransactionController");
+	}
+
+	try {
+		const result = await getCurrentSequentialTransaction(batchSessionId, userId);
+
+		res.status(200).json({
+			message: "Current transaction retrieved successfully",
+			data: result
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const approveSequentialTransactionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const { batchSessionId, edits } = req.body;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "approveSequentialTransactionController");
+	}
+
+	if (!batchSessionId) {
+		throw new AppError(400, "Batch session ID is required", "approveSequentialTransactionController");
+	}
+
+	try {
+		const result = await approveSequentialTransaction(batchSessionId, userId, edits);
+
+		res.status(200).json({
+			message: result.isComplete
+				? "Transaction approved and session completed"
+				: "Transaction approved successfully",
+			data: result
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const skipSequentialTransactionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const batchSessionId = req.params.batchSessionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "skipSequentialTransactionController");
+	}
+
+	if (!batchSessionId || typeof batchSessionId !== 'string') {
+		throw new AppError(400, "Batch session ID is required", "skipSequentialTransactionController");
+	}
+
+	try {
+		const result = await skipSequentialTransaction(batchSessionId, userId);
+
+		res.status(200).json({
+			message: result.isComplete
+				? "Transaction skipped and session completed"
+				: "Transaction skipped successfully",
+			data: result
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const completeSequentialSessionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const batchSessionId = req.params.batchSessionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "completeSequentialSessionController");
+	}
+
+	if (!batchSessionId || typeof batchSessionId !== 'string') {
+		throw new AppError(400, "Batch session ID is required", "completeSequentialSessionController");
+	}
+
+	try {
+		const result = await completeSequentialSession(batchSessionId, userId);
+
+		res.status(200).json({
+			message: "Sequential session completed successfully",
+			data: result
+		});
 	} catch (err) {
 		next(err);
 	}

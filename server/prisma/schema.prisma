@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id              String    @default(uuid())@id
+  id              String   @id @default(uuid())
   name            String
   email           String
   emailVerified   Boolean  @default(false) @map("email_verified")
@@ -31,20 +31,20 @@ model User {
 }
 
 model Receipt {
-  id                    String                       @id @default(uuid())
-  userId                String                       @map("user_id")
-  fileUrl               String                       @map("file_url") @db.VarChar(500)
-  fileType              String                       @map("file_type") @db.VarChar(10)
-  fileSize              Int?                         @map("file_size")
-  rawOcrText            String?                      @map("raw_ocr_text") @db.Text
-  ocrConfidence         Decimal?                     @map("ocr_confidence") @db.Decimal(5, 2)
-  processingStatus      String                       @default("pending") @map("processing_status") @db.VarChar(20)
-  uploadedAt            DateTime                     @default(now()) @map("uploaded_at")
-  processedAt           DateTime?                    @map("processed_at")
-  documentType          String?                      @map("document_type") @db.VarChar(30)
-  expectedTransactions  Int?                         @default(1) @map("expected_transactions")
-  processedTransactions Int                          @default(0) @map("processed_transactions")
-  detectionCompleted    Boolean                      @default(false) @map("detection_completed")
+  id                    String    @id @default(uuid())
+  userId                String    @map("user_id")
+  fileUrl               String    @map("file_url") @db.VarChar(500)
+  fileType              String    @map("file_type") @db.VarChar(10)
+  fileSize              Int?      @map("file_size")
+  rawOcrText            String?   @map("raw_ocr_text") @db.Text
+  ocrConfidence         Decimal?  @map("ocr_confidence") @db.Decimal(5, 2)
+  processingStatus      String    @default("pending") @map("processing_status") @db.VarChar(20)
+  uploadedAt            DateTime  @default(now()) @map("uploaded_at")
+  processedAt           DateTime? @map("processed_at")
+  documentType          String?   @map("document_type") @db.VarChar(30)
+  expectedTransactions  Int?      @default(1) @map("expected_transactions")
+  processedTransactions Int       @default(0) @map("processed_transactions")
+  detectionCompleted    Boolean   @default(false) @map("detection_completed")
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions          Transaction[]
@@ -61,13 +61,13 @@ model Receipt {
 }
 
 model Transaction {
-  id                 String  @id @default(uuid())
-  userId             String  @map("user_id")
-  receiptId          String? @map("receipt_id")
-  contactId          String? @map("sender_id")
-  categoryId         String? @map("category_id")
-  userBankAccountId  String? @map("user_bank_account_id")
-  toBankAccountId    String? @map("to_bank_account_id")
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  receiptId         String? @map("receipt_id")
+  contactId         String? @map("sender_id")
+  categoryId        String? @map("category_id")
+  userBankAccountId String? @map("user_bank_account_id")
+  toBankAccountId   String? @map("to_bank_account_id")
 
   amount            Decimal                      @db.Decimal(15, 2)
   currency          String                       @default("NGN") @db.VarChar(3)
@@ -138,7 +138,6 @@ model ClarificationMessage {
   createdAt   DateTime @default(now()) @map("created_at")
 
   session ClarificationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  
 
   @@index([sessionId])
   @@map("clarification_messages")
@@ -186,7 +185,7 @@ model Contact {
 }
 
 model Session {
-  id        String    @default(uuid())@id
+  id        String   @id @default(uuid())
   expiresAt DateTime @map("expires_at")
   token     String
   createdAt DateTime @default(now()) @map("created_at")
@@ -203,7 +202,7 @@ model Session {
 }
 
 model Account {
-  id                    String    @default(uuid())@id
+  id                    String    @id @default(uuid())
   accountId             String
   providerId            String    @map("provider_id")
   userId                String    @map("user_id")
@@ -224,7 +223,7 @@ model Account {
 }
 
 model Verification {
-  id         String  @default(uuid()) @id
+  id         String   @id @default(uuid())
   identifier String
   value      String
   expiresAt  DateTime
@@ -236,18 +235,18 @@ model Verification {
 }
 
 model BankAccount {
-  id            String    @id @default(uuid())
-  userId        String    @map("user_id")
-  accountName   String    @map("account_name") @db.VarChar(100)
-  accountNumber String?   @map("account_number") @db.VarChar(20)
-  bankName      String    @map("bank_name") @db.VarChar(100)
-  accountType   String?   @map("account_type") @db.VarChar(20)
-  currency      String    @default("NGN") @db.VarChar(3)
-  nickname      String?   @db.VarChar(50)
-  isActive      Boolean   @default(true) @map("is_active")
-  isPrimary     Boolean   @default(false) @map("is_primary")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  accountName   String   @map("account_name") @db.VarChar(100)
+  accountNumber String?  @map("account_number") @db.VarChar(20)
+  bankName      String   @map("bank_name") @db.VarChar(100)
+  accountType   String?  @map("account_type") @db.VarChar(20)
+  currency      String   @default("NGN") @db.VarChar(3)
+  nickname      String?  @db.VarChar(50)
+  isActive      Boolean  @default(true) @map("is_active")
+  isPrimary     Boolean  @default(false) @map("is_primary")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   primaryTransactions     Transaction[] @relation("PrimaryAccount")
@@ -281,19 +280,19 @@ enum TransactionStatus {
 }
 
 model BatchSession {
-  id              String    @id @default(uuid())
-  receiptId       String    @map("receipt_id")
-  userId          String    @map("user_id")
-  totalExpected   Int       @map("total_expected")
-  totalProcessed  Int       @default(0) @map("total_processed")
-  currentIndex    Int       @default(0) @map("current_index")
-  status          String    @default("in_progress") @map("status") @db.VarChar(20)
-  extractedData   Json?     @map("extracted_data")
-  processingMode  String    @map("processing_mode") @db.VarChar(20)
-  startedAt       DateTime  @default(now()) @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  receiptId      String    @map("receipt_id")
+  userId         String    @map("user_id")
+  totalExpected  Int       @map("total_expected")
+  totalProcessed Int       @default(0) @map("total_processed")
+  currentIndex   Int       @default(0) @map("current_index")
+  status         String    @default("in_progress") @map("status") @db.VarChar(20)
+  extractedData  Json?     @map("extracted_data")
+  processingMode String    @map("processing_mode") @db.VarChar(20)
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -303,4 +302,3 @@ model BatchSession {
   @@index([status])
   @@map("batch_sessions")
 }
-
