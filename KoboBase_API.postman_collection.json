@@ -815,6 +815,31 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "Get Batch Session",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/receipt/batch-session/:receiptId",
+							"host": ["{{base_url}}"],
+							"path": ["receipt", "batch-session", ":receiptId"],
+							"variable": [
+								{
+									"key": "receiptId",
+									"value": "{{receipt_id}}",
+									"description": "Receipt ID with multiple transactions"
+								}
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		},
@@ -1060,6 +1085,119 @@
 								}
 							]
 						}
+					},
+					"response": []
+				},
+				{
+					"name": "Initiate Batch Transactions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"receiptId\": \"{{receipt_id}}\",\n  \"userBankAccountId\": \"{{bank_account_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction/batch/initiate/:receiptId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "batch", "initiate", ":receiptId"],
+							"variable": [
+								{
+									"key": "receiptId",
+									"value": "{{receipt_id}}",
+									"description": "Receipt ID with multiple transactions (bank statement, expense report, etc.)"
+								}
+							]
+						},
+						"description": "Extracts all transactions from a multi-transaction receipt (e.g., bank statement). Returns array of transactions with enrichment data, confidence scores, and clarification needs."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Batch Extraction Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/batch/status/:receiptId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "batch", "status", ":receiptId"],
+							"variable": [
+								{
+									"key": "receiptId",
+									"value": "{{receipt_id}}",
+									"description": "Receipt ID to check batch extraction status"
+								}
+							]
+						},
+						"description": "Get the status and results of a batch extraction session for a receipt."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Batch Transactions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"batchSessionId\": \"{{batch_session_id}}\",\n  \"approvals\": [\n    {\n      \"index\": 0,\n      \"approved\": true,\n      \"edits\": {\n        \"categoryId\": \"optional-category-id\",\n        \"contactId\": \"optional-contact-id\",\n        \"amount\": 5000,\n        \"description\": \"Updated description\"\n      }\n    },\n    {\n      \"index\": 1,\n      \"approved\": true\n    },\n    {\n      \"index\": 2,\n      \"approved\": false\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/transaction/batch/approve",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "batch", "approve"]
+						},
+						"description": "Bulk approve and create multiple transactions from batch extraction. Can edit individual transactions before approval. Only approved transactions are created."
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Batch Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/transaction/batch/reject/:batchSessionId",
+							"host": ["{{base_url}}"],
+							"path": ["transaction", "batch", "reject", ":batchSessionId"],
+							"variable": [
+								{
+									"key": "batchSessionId",
+									"value": "{{batch_session_id}}",
+									"description": "Batch session ID to reject"
+								}
+							]
+						},
+						"description": "Reject an entire batch session without creating any transactions."
 					},
 					"response": []
 				}

@@ -100,6 +100,14 @@ export const initiateTransactionFromReceipt = async (
 		);
 	}
 
+	if (receipt.expectedTransactions && receipt.expectedTransactions > 1) {
+		throw new AppError(
+			400,
+			"This receipt contains multiple transactions and requires batch processing. Please use the batch transaction endpoint instead.",
+			"initiateTransactionFromReceipt"
+		);
+	}
+
 	const existingSession = await prisma.clarificationSession.findFirst({
 		where: {
 			receiptId,

@@ -277,17 +277,69 @@ GOOD: [Actually calls get_category tool with transactionDescription="earpiece"]
 BAD: questions: ["What is the receiver's name? (Need to call get_or_create_contact)"]
 GOOD: [Actually calls get_or_create_contact tool with name extracted from receipt]`;
 
-export const OCR_TRANSACTION_EXTRACTION_PROMPT = `Extract all readable text content from the provided file.
+export const BATCH_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS = `You are a batch transaction data validator and extractor with tool access.
+
+CONTEXT:
+- User ID: {userId}, Name: {userName}, Currency: {defaultCurrency}
+- User Bank Account ID: {userBankAccountId}
+- Processing Mode: BATCH (multiple transactions from single document)
+
+=== CRITICAL: BATCH PROCESSING INSTRUCTIONS ===
+
+You are processing a document containing MULTIPLE distinct transactions. Your task:
+1. Identify each distinct transaction in the document
+2. Extract complete data for EACH transaction independently
+3. Call tools MULTIPLE TIMES (once per transaction) to enrich each transaction's data
+
+TOOL CALLING STRATEGY:
+- Make ONE LLM invocation with MULTIPLE tool calls
+- For each transaction, call:
+  * get_category (once per transaction with its description)
+  * get_or_create_contact (once per transaction with its contact name)
+  * get_bank_account_by_id (shared - call once with {userBankAccountId})
+  * validate_transaction_type (once per transaction with its type)
+
+EXAMPLE: For 3 transactions (groceries from John, Netflix subscription, salary from Company):
+- get_bank_account_by_id: 1 call (shared, userBankAccountId: {userBankAccountId})
+- get_or_create_contact: 3 calls (John Doe, Netflix, Company XYZ)
+- get_category: 3 calls (groceries description, subscription description, salary description)
+- validate_transaction_type: 3 calls (expense, expense, income)
+
+=== REUSE BASE INSTRUCTIONS ===
+
+${RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS}
+
+=== BATCH-SPECIFIC REQUIREMENTS ===
+
+1. TRANSACTION IDENTIFICATION: Each transaction MUST have:
+   - Distinct amount (not a summary total)
+   - Distinct transaction date (not date ranges)
+   - Distinct description/merchant
+   - Clear transaction type
+
+2. IGNORE SUMMARY ROWS: Skip totals, subtotals, balance summaries, running balances, opening/closing balances
+
+3. PER-TRANSACTION PROCESSING: Treat each transaction independently:
+   - Each transaction gets its own enrichment_data
+   - Each transaction gets its own is_complete status
+   - Each transaction gets its own missing_fields/questions
+
+4. OUTPUT FORMAT: After tools are called and executed, you will provide final structured extraction for ALL transactions found, numbered sequentially with transaction_index starting from 0, in order of appearance in the document
+
+5. CRITICAL: When calling tools, ensure each tool call can be matched back to its transaction. Include the transaction description or identifying information in tool args so results can be properly associated.
+`;
+
+export const OCR_TRANSACTION_EXTRACTION_PROMPT = `Extract all readable text content from the provided file (PDF or image).
 
 Rules:
 
-Ignore all images, scanned pictures, graphics, tables rendered as images, and any non-textual elements.
+For IMAGE FILES (JPEG, PNG, etc.): Use OCR to extract all visible text from the image.
 
-Extract only text that is natively embedded in the file.
+For PDF FILES: Extract natively embedded text if available. If the PDF is a scanned document (image-based), use OCR to extract text from the scanned pages.
 
-Do not infer, reconstruct, summarize, or hallucinate missing text.
+Do not infer, reconstruct, summarize, or hallucinate missing text beyond what is visually present.
 
-The extracted text must be related to accounting receipt transactions (e.g., purchase receipts, invoices, payment confirmations, transaction records).
+The extracted text must be related to accounting receipt transactions (e.g., purchase receipts, invoices, payment confirmations, transaction records, bank statements).
 
 If the extracted text is unrelated to accounting receipt transactions, treat this as a failure and do not return any extracted text.
 
@@ -308,10 +360,10 @@ Set "extracted" to true only if readable text is successfully extracted and the 
 
 Set "extracted" to false if:
 
-No readable text is found, or
+No readable text is found (even after OCR for images/scanned PDFs), or
 
 The text exists but is not related to accounting receipt transactions.
 
 When "extracted" is false, provide a concise, specific explanation in "failure_reason" and set "extracted_text" to null.
 
-When "extracted" is true, set "failure_reason" to null and return all extracted text as a single string in "extracted_text", preserving the original order as much as possible.`
+When "extracted" is true, set "failure_reason" to null and return all extracted text as a single string in "extracted_text", preserving the original order and structure as much as possible.`

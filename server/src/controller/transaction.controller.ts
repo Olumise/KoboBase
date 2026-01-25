@@ -10,6 +10,9 @@ import {
 	deleteTransaction,
 	getTransactionStats,
 } from "../services/transaction.service";
+import { initiateBatchTransactionsFromReceipt, getBatchExtractionStatus } from "../services/batchExtraction.service";
+import { approveBatchTransactions, rejectBatchSession } from "../services/batchApproval.service";
+import { prisma } from "../lib/prisma";
 
 export const generateTransactionController = async (
 	req: Request,
@@ -258,6 +261,126 @@ export const getTransactionStatsController = async (
 			message: "Transaction statistics retrieved successfully",
 			data: stats,
 		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const extractBatchTransactionsController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const receiptId = req.params.receiptId as string;
+	const { userBankAccountId } = req.body;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "extractBatchTransactionsController");
+	}
+
+	if (!receiptId || typeof receiptId !== 'string') {
+		throw new AppError(400, "Receipt ID is required", "extractBatchTransactionsController");
+	}
+
+	if (!userBankAccountId) {
+		throw new AppError(400, "Bank Account ID is required", "extractBatchTransactionsController");
+	}
+
+	try {
+		// Call the new batch transaction initiation function
+		// Validation is now handled inside the service function
+		const batchInitiation = await initiateBatchTransactionsFromReceipt(
+			receiptId,
+			userId,
+			userBankAccountId
+		);
+
+		res.status(200).json({
+			message: "Batch transactions initiated successfully",
+			data: batchInitiation
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getBatchExtractionStatusController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const receiptId = req.params.receiptId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "getBatchExtractionStatusController");
+	}
+
+	if (!receiptId || typeof receiptId !== 'string') {
+		throw new AppError(400, "Receipt ID is required", "getBatchExtractionStatusController");
+	}
+
+	try {
+		const status = await getBatchExtractionStatus(receiptId, userId);
+		res.status(200).json(status);
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const approveBatchTransactionsController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const { batchSessionId, approvals } = req.body;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "approveBatchTransactionsController");
+	}
+
+	if (!batchSessionId) {
+		throw new AppError(400, "Batch session ID is required", "approveBatchTransactionsController");
+	}
+
+	if (!approvals || !Array.isArray(approvals)) {
+		throw new AppError(400, "Approvals array is required", "approveBatchTransactionsController");
+	}
+
+	try {
+		const result = await approveBatchTransactions({ batchSessionId, approvals }, userId);
+
+		res.status(200).json({
+			message: "Batch transactions processed successfully",
+			data: result
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const rejectBatchSessionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const batchSessionId = req.params.batchSessionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "rejectBatchSessionController");
+	}
+
+	if (!batchSessionId || typeof batchSessionId !== 'string') {
+		throw new AppError(400, "Batch session ID is required", "rejectBatchSessionController");
+	}
+
+	try {
+		const result = await rejectBatchSession(batchSessionId, userId);
+
+		res.status(200).json(result);
 	} catch (err) {
 		next(err);
 	}

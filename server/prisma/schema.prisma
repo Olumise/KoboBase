@@ -24,32 +24,39 @@ model User {
   clarificationSessions ClarificationSession[]
   categories            Category[]
   bankAccounts          BankAccount[]
+  batchSessions         BatchSession[]
 
   @@unique([email])
   @@map("user")
 }
 
 model Receipt {
-  id               String                       @id @default(uuid())
-  userId           String                       @map("user_id")
-  fileUrl          String                       @map("file_url") @db.VarChar(500)
-  fileType         String                       @map("file_type") @db.VarChar(10)
-  fileSize         Int?                         @map("file_size")
-  rawOcrText       String?                      @map("raw_ocr_text") @db.Text
-  ocrConfidence    Decimal?                     @map("ocr_confidence") @db.Decimal(5, 2)
-  processingStatus String                       @default("pending") @map("processing_status") @db.VarChar(20)
-  uploadedAt       DateTime                     @default(now()) @map("uploaded_at")
-  processedAt      DateTime?                    @map("processed_at")
+  id                    String                       @id @default(uuid())
+  userId                String                       @map("user_id")
+  fileUrl               String                       @map("file_url") @db.VarChar(500)
+  fileType              String                       @map("file_type") @db.VarChar(10)
+  fileSize              Int?                         @map("file_size")
+  rawOcrText            String?                      @map("raw_ocr_text") @db.Text
+  ocrConfidence         Decimal?                     @map("ocr_confidence") @db.Decimal(5, 2)
+  processingStatus      String                       @default("pending") @map("processing_status") @db.VarChar(20)
+  uploadedAt            DateTime                     @default(now()) @map("uploaded_at")
+  processedAt           DateTime?                    @map("processed_at")
+  documentType          String?                      @map("document_type") @db.VarChar(30)
+  expectedTransactions  Int?                         @default(1) @map("expected_transactions")
+  processedTransactions Int                          @default(0) @map("processed_transactions")
+  detectionCompleted    Boolean                      @default(false) @map("detection_completed")
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions          Transaction[]
   clarificationSessions ClarificationSession[]
+  batchSessions         BatchSession[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @map("updated_at")
 
   @@index([userId])
   @@index([processingStatus])
+  @@index([documentType])
   @@map("receipts")
 }
 
@@ -271,5 +278,29 @@ enum TransactionStatus {
   DISPUTED  @map("disputed")
 
   @@map("transaction_status")
+}
+
+model BatchSession {
+  id              String    @id @default(uuid())
+  receiptId       String    @map("receipt_id")
+  userId          String    @map("user_id")
+  totalExpected   Int       @map("total_expected")
+  totalProcessed  Int       @default(0) @map("total_processed")
+  currentIndex    Int       @default(0) @map("current_index")
+  status          String    @default("in_progress") @map("status") @db.VarChar(20)
+  extractedData   Json?     @map("extracted_data")
+  processingMode  String    @map("processing_mode") @db.VarChar(20)
+  startedAt       DateTime  @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId])
+  @@index([userId])
+  @@index([status])
+  @@map("batch_sessions")
 }
 

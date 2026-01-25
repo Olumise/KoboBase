@@ -8,6 +8,10 @@ import {
 	updateTransactionController,
 	deleteTransactionController,
 	getTransactionStatsController,
+	extractBatchTransactionsController,
+	getBatchExtractionStatusController,
+	approveBatchTransactionsController,
+	rejectBatchSessionController,
 } from "../controller/transaction.controller";
 import { authVerify } from "../middlewares/authVerify";
 
@@ -15,6 +19,11 @@ const transactionRouter = express();
 
 transactionRouter.post("/generate", generateTransactionController);
 transactionRouter.post("/initiate", authVerify, initiateTransactionController);
+transactionRouter.post("/batch/initiate/:receiptId", authVerify, extractBatchTransactionsController);
+transactionRouter.post("/batch/extract/:receiptId", authVerify, extractBatchTransactionsController);
+transactionRouter.get("/batch/status/:receiptId", authVerify, getBatchExtractionStatusController);
+transactionRouter.post("/batch/approve", authVerify, approveBatchTransactionsController);
+transactionRouter.post("/batch/reject/:batchSessionId", authVerify, rejectBatchSessionController);
 transactionRouter.get("/", authVerify, getUserTransactionsController);
 transactionRouter.get("/stats", authVerify, getTransactionStatsController);
 transactionRouter.get("/:transactionId", authVerify, getTransactionByIdController);

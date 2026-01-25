@@ -48,7 +48,20 @@ export const googleOCR = async (fileInput: Buffer | string, mimeType: string) =>
 	if (!responseText) {
 		throw new AppError(500, "No response from AI model", "googleOCR");
 	}
-	return JSON.parse(responseText);
+
+	try {
+		return JSON.parse(responseText);
+	} catch (parseError) {
+		const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+		if (jsonMatch) {
+			return JSON.parse(jsonMatch[0]);
+		}
+		throw new AppError(
+			500,
+			`Failed to parse AI response as JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+			"googleOCR"
+		);
+	}
 };
 
 

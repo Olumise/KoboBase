@@ -3,6 +3,7 @@ import { AppError } from "../middlewares/errorHandler";
 import { addReceipt, extractReceiptRawText, updateReceiptFile } from "../services/receipt.service";
 import { AddReceiptType, UpdateReceiptFileType } from "../schema/receipt";
 import { uploadFile } from "../services/upload";
+import { prisma } from "../lib/prisma";
 
 export const addReceiptController = async (
 	req: Request,
@@ -76,6 +77,59 @@ export const updateReceiptFileController = async (
 
 		const updatedReceipt = await updateReceiptFile(receiptId, userId, data);
 		res.send(updatedReceipt);
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getBatchSessionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const { receiptId } = req.params;
+	const userId = req.user.id;
+
+	try {
+		if (!receiptId || typeof receiptId !== 'string') {
+			throw new AppError(400, "Receipt ID is required", "getBatchSessionController");
+		}
+
+		const receipt = await prisma.receipt.findUnique({
+			where: { id: receiptId },
+			select: { userId: true }
+		});
+
+		if (!receipt) {
+			throw new AppError(404, "Receipt not found", "getBatchSessionController");
+		}
+
+		if (receipt.userId !== userId) {
+			throw new AppError(403, "Unauthorized access to receipt", "getBatchSessionController");
+		}
+
+		const batchSession = await prisma.batchSession.findFirst({
+			where: {
+				receiptId: receiptId,
+				userId: userId,
+			},
+			orderBy: {
+				createdAt: 'desc'
+			}
+		});
+
+		if (!batchSession) {
+			res.send({
+				hasBatchSession: false,
+				message: "This receipt does not have a batch processing session"
+			});
+			return;
+		}
+
+		res.send({
+			hasBatchSession: true,
+			batchSession: batchSession
+		});
 	} catch (err) {
 		next(err);
 	}

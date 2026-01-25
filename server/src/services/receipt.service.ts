@@ -13,6 +13,7 @@ import {
 	UpdateReceiptType,
 } from "../schema/receipt";
 import { googleOCR } from "./ocr.service";
+import { detectDocumentType, determineProcessingMode } from "./documentDetection.service";
 
 export const addReceipt = async (data: AddReceiptType) => {
 	AddReceiptSchema.parse(data);
@@ -53,6 +54,17 @@ export const extractReceiptRawText = async (receiptId: string) => {
 			: `Error in AI extracting texts from transaction ${text}`;
 		throw new AppError(500, failureReason, "extractReceiptRawText");
 	}
+
+	let detection = null;
+	let processingMode = "single";
+
+	try {
+		detection = await detectDocumentType(text.extracted_text || "");
+		processingMode = determineProcessingMode(detection);
+	} catch (error) {
+		console.error("Document detection failed, falling back to single mode:", error);
+	}
+
 	const receiptUpdate = await prisma.receipt.update({
 		where: {
 			id: receiptId,
@@ -61,9 +73,34 @@ export const extractReceiptRawText = async (receiptId: string) => {
 			rawOcrText: text.extracted_text,
 			processedAt: presentDateTime,
 			processingStatus: "processed",
+			documentType: detection?.document_type || "single_receipt",
+			expectedTransactions: detection?.transaction_count || 1,
+			detectionCompleted: detection !== null,
 		},
 	});
-	return receiptUpdate;
+
+	if (detection && detection.transaction_count > 1) {
+		await prisma.batchSession.create({
+			data: {
+				receiptId: receipt.id,
+				userId: receipt.userId,
+				totalExpected: detection.transaction_count,
+				processingMode: processingMode,
+				extractedData: {
+					detection: detection,
+					transactionPreview: detection.transaction_preview,
+				},
+				status: "in_progress",
+			},
+		});
+	}
+
+	return {
+		receipt: receiptUpdate,
+		detection: detection,
+		processingMode: processingMode,
+		isMultiTransaction: detection ? detection.transaction_count > 1 : false,
+	};
 };
 
 export const updateReceiptFile = async (
