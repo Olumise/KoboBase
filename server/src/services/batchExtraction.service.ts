@@ -117,11 +117,14 @@ export const initiateBatchTransactionsFromReceipt = async (
 	const initialPrompt = [
 		{
 			role: "system",
-			content: `${systemPrompt}\n\nReceipt OCR Text:\n${receipt.rawOcrText}`,
+			content: systemPrompt,
+			additional_kwargs: {
+				cache_control: { type: "ephemeral" }
+			}
 		},
 		{
 			role: "user",
-			content: "Please extract ALL distinct transactions from this document and call the appropriate tools for EACH transaction.",
+			content: `Receipt OCR Text:\n${receipt.rawOcrText}\n\nPlease extract ALL distinct transactions from this document and call the appropriate tools for EACH transaction.`,
 		},
 	];
 

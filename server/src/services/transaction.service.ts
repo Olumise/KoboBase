@@ -168,12 +168,14 @@ export const initiateTransactionFromReceipt = async (
 	const initialPrompt = [
 		{
 			role: "system",
-			content: `${systemPrompt}\n\nReceipt OCR Text:\n${receipt.rawOcrText}`,
+			content: systemPrompt,
+			additional_kwargs: {
+				cache_control: { type: "ephemeral" }
+			}
 		},
 		{
 			role: "user",
-			content:
-				"Please extract all transaction details from this receipt and call the appropriate tools.",
+			content: `Receipt OCR Text:\n${receipt.rawOcrText}\n\nPlease extract all transaction details from this receipt and call the appropriate tools.`,
 		},
 	];
 

@@ -98,11 +98,14 @@ export const createClarification = async (
 	const initialPrompt = [
 		{
 			role: "system",
-			content: `${RECEIPT_TRANSACTION_SYSTEM_PROMPT}\n\nReceipt OCR Text:\n${dataToStore}`,
+			content: RECEIPT_TRANSACTION_SYSTEM_PROMPT,
+			additional_kwargs: {
+				cache_control: { type: "ephemeral" }
+			}
 		},
 		{
 			role: "user",
-			content: "Please extract all transaction details from this receipt.",
+			content: `Receipt OCR Text:\n${dataToStore}\n\nPlease extract all transaction details from this receipt.`,
 		},
 	];
 

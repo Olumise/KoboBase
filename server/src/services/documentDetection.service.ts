@@ -55,6 +55,9 @@ export const detectDocumentType = async (
 			{
 				role: "system",
 				content: DOCUMENT_DETECTION_PROMPT,
+				additional_kwargs: {
+					cache_control: { type: "ephemeral" }
+				}
 			},
 			{
 				role: "user",
