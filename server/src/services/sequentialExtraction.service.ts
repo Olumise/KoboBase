@@ -5,7 +5,6 @@ import {
 } from "../schema/ai-formats";
 import {
 	OpenAIllmGPT4Turbo as OpenAIllm,
-	OpenAIllmCreative,
 } from "../models/llm.models";
 import { AppError } from "../middlewares/errorHandler";
 import { prisma } from "../lib/prisma";
@@ -138,7 +137,7 @@ export const initiateSequentialProcessing = async (
 		}
 	}
 
-	const llmWithTools = OpenAIllmCreative.bindTools(allAITools, {});
+	const llmWithTools = OpenAIllm.bindTools(allAITools, {});
 
 	const systemPrompt = buildExtractionPrompt({
 		userId: user.id,
@@ -154,7 +153,7 @@ export const initiateSequentialProcessing = async (
 		new SystemMessage({
 			content: systemPrompt,
 			additional_kwargs: {
-				cache_control: { type: "ephemeral" }
+				cache_control: { type: "standard" }
 			}
 		}),
 		new HumanMessage({
@@ -199,18 +198,21 @@ export const initiateSequentialProcessing = async (
 		}
 	}
 
-	const autoToolResults: Record<string, any> = {};
-
-	for (const toolCall of autoExecuteTools) {
+	const toolExecutionPromises = autoExecuteTools.map(async (toolCall) => {
 		try {
 			const result = await executeAITool(toolCall.name as any, toolCall.args);
-			const resultKey = `${toolCall.name}_${toolCall.id || Math.random()}`;
-			autoToolResults[resultKey] = result;
+			return { key: `${toolCall.name}_${toolCall.id || Math.random()}`, result };
 		} catch (error) {
 			console.error(`Error executing tool ${toolCall.name}:`, error);
-			autoToolResults[`${toolCall.name}_error`] = { error: String(error) };
+			return { key: `${toolCall.name}_error`, result: { error: String(error) } };
 		}
-	}
+	});
+
+	const results = await Promise.all(toolExecutionPromises);
+	const autoToolResults: Record<string, any> = {};
+	results.forEach(({ key, result }) => {
+		autoToolResults[key] = result;
+	});
 
 	console.log("Auto tool results:", JSON.stringify(autoToolResults, null, 2));
 

@@ -20,25 +20,42 @@ const GetOrCreateContactSchema = z.object({
 export const getOrCreateContactTool = tool(
 	async ({ contactName, contactType, categoryId }) => {
 		try {
-			let contact = await prisma.contact.findFirst({
+			const normalizedInput = contactName.toLowerCase().trim();
+
+			const exactMatch = await prisma.contact.findFirst({
 				where: {
-					name: {
-						equals: contactName,
-						mode: "insensitive",
-					},
+					OR: [
+						{
+							name: {
+								equals: contactName,
+								mode: "insensitive",
+							},
+						},
+						{
+							normalizedName: {
+								equals: normalizedInput,
+								mode: "insensitive",
+							},
+						},
+						{
+							nameVariations: {
+								has: contactName,
+							},
+						},
+					],
 				},
 			});
 
-			if (contact) {
+			if (exactMatch) {
 				return JSON.stringify({
-					id: contact.id,
-					name: contact.name,
-					normalizedName: contact.normalizedName,
-					contactType: contact.ContactType,
-					categoryId: contact.categoryId,
-					nameVariations: contact.nameVariations,
-					transactionCount: contact.transactionCount,
-					lastTransactionDate: contact.lastTransactionDate?.toISOString() || null,
+					id: exactMatch.id,
+					name: exactMatch.name,
+					normalizedName: exactMatch.normalizedName,
+					contactType: exactMatch.ContactType,
+					categoryId: exactMatch.categoryId,
+					nameVariations: exactMatch.nameVariations,
+					transactionCount: exactMatch.transactionCount,
+					lastTransactionDate: exactMatch.lastTransactionDate?.toISOString() || null,
 					created: false,
 					matchConfidence: 1.0,
 					matchedVariation: null,
@@ -46,43 +63,6 @@ export const getOrCreateContactTool = tool(
 			}
 
 			const allContacts = await prisma.contact.findMany();
-			const normalizedInput = contactName.toLowerCase().trim();
-
-			for (const cont of allContacts) {
-				if (cont.normalizedName?.toLowerCase() === normalizedInput) {
-					return JSON.stringify({
-						id: cont.id,
-						name: cont.name,
-						normalizedName: cont.normalizedName,
-						contactType: cont.ContactType,
-						categoryId: cont.categoryId,
-						nameVariations: cont.nameVariations,
-						transactionCount: cont.transactionCount,
-						lastTransactionDate: cont.lastTransactionDate?.toISOString() || null,
-						created: false,
-						matchConfidence: 0.95,
-						matchedVariation: cont.normalizedName,
-					});
-				}
-
-				for (const variation of cont.nameVariations) {
-					if (variation.toLowerCase() === normalizedInput) {
-						return JSON.stringify({
-							id: cont.id,
-							name: cont.name,
-							normalizedName: cont.normalizedName,
-							contactType: cont.ContactType,
-							categoryId: cont.categoryId,
-							nameVariations: cont.nameVariations,
-							transactionCount: cont.transactionCount,
-							lastTransactionDate: cont.lastTransactionDate?.toISOString() || null,
-							created: false,
-							matchConfidence: 0.9,
-							matchedVariation: variation,
-						});
-					}
-				}
-			}
 
 			let bestMatch = null;
 			let bestScore = 0;

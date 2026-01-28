@@ -19,6 +19,13 @@ export const getCategoryTool = tool(
 						{ userId: userId, isActive: true },
 					],
 				},
+				select: {
+					id: true,
+					name: true,
+					icon: true,
+					color: true,
+					isSystemCategory: true,
+				},
 				orderBy: {
 					isSystemCategory: "desc",
 				},
@@ -37,13 +44,7 @@ export const getCategoryTool = tool(
 				success: true,
 				message: "Retrieved all categories. Analyze the transaction description and determine which category best matches, or return null if none match.",
 				transactionDescription: transactionDescription,
-				categories: allCategories.map(cat => ({
-					id: cat.id,
-					name: cat.name,
-					icon: cat.icon,
-					color: cat.color,
-					isSystemCategory: cat.isSystemCategory,
-				})),
+				categories: allCategories,
 			});
 		} catch (error) {
 			return JSON.stringify({

@@ -4,8 +4,10 @@ import { AppError } from "../middlewares/errorHandler";
 import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens } from "../utils/tokenCounter";
 import { trackLLMCall, initializeSession } from "./costTracking.service";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { prisma } from "../lib/prisma";
 
-const DOCUMENT_DETECTION_PROMPT = `You are a financial document analyzer. Your task is to analyze OCR-extracted text from financial documents and determine:
+const buildDocumentDetectionPrompt = (customContext?: string): string => {
+	let prompt = `You are a financial document analyzer. Your task is to analyze OCR-extracted text from financial documents and determine:
 
 1. **Document Type**: What kind of financial document is this?
    - single_receipt: A receipt for one transaction
@@ -32,9 +34,22 @@ Important Guidelines:
 - Be conservative with transaction counts - only count clear, distinct transactions
 - If the document is unclear or low quality, reflect this in your confidence score
 - For multi-item receipts (e.g., grocery receipts), count as 1 transaction unless each item was paid separately
-- Look for indicators like multiple dates, multiple payment methods, or explicit transaction listings
+- Look for indicators like multiple dates, multiple payment methods, or explicit transaction listings`;
 
-Analyze the document carefully and provide accurate detection results.`;
+	if (customContext && customContext.trim()) {
+		prompt += `\n\n## Custom User Instructions
+
+The user has provided the following custom instructions to guide document analysis:
+
+${customContext}
+
+**IMPORTANT**: Apply these user-provided instructions when analyzing the document. However, they should supplement (not replace) the core detection rules above.`;
+	}
+
+	prompt += `\n\nAnalyze the document carefully and provide accurate detection results.`;
+
+	return prompt;
+};
 
 export const detectDocumentType = async (
 	ocrText: string,
@@ -50,9 +65,24 @@ export const detectDocumentType = async (
 	}
 
 	try {
+		let customContextPrompt: string | undefined;
+
+		if (userId) {
+			const user = await prisma.user.findUnique({
+				where: { id: userId },
+				select: { customContextPrompt: true },
+			});
+
+			if (user?.customContextPrompt) {
+				customContextPrompt = user.customContextPrompt;
+			}
+		}
+
+		const documentDetectionPrompt = buildDocumentDetectionPrompt(customContextPrompt);
+
 		const messages = [
 			new SystemMessage({
-				content: DOCUMENT_DETECTION_PROMPT,
+				content: documentDetectionPrompt,
 				additional_kwargs: {
 					cache_control: { type: "ephemeral" }
 				}

@@ -120,7 +120,7 @@ export const createClarification = async (
 		new SystemMessage({
 			content: systemPrompt,
 			additional_kwargs: {
-				cache_control: { type: "ephemeral" }
+				cache_control: { type: "standard" }
 			}
 		}),
 		new HumanMessage({
@@ -450,12 +450,16 @@ export const sendClarificationMessage = async (
 	}
 
 
-	const newToolResults: Record<string, any> = {};
-
-	for (const toolCall of autoExecuteTools) {
+	const toolExecutionPromises = autoExecuteTools.map(async (toolCall) => {
 		const result = await executeAITool(toolCall.name as any, toolCall.args);
-		newToolResults[toolCall.name] = result;
-	}
+		return { name: toolCall.name, result };
+	});
+
+	const results = await Promise.all(toolExecutionPromises);
+	const newToolResults: Record<string, any> = {};
+	results.forEach(({ name, result }) => {
+		newToolResults[name] = result;
+	});
 
 	const allToolResults = { ...existingToolResults, ...newToolResults };
 
