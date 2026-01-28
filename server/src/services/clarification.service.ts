@@ -10,7 +10,7 @@ import {
 	BatchTransactionInitiationResponse,
 	BatchTransactionInitiationItem,
 } from "../schema/ai-formats";
-import { RECEIPT_TRANSACTION_SYSTEM_PROMPT } from "../lib/prompts";
+import { buildExtractionPrompt } from "../lib/prompts";
 import { executeAITool } from "./aiToolExecutor.service";
 import { allAITools } from "../tools";
 import { shouldRequireConfirmation, generateConfirmationQuestion } from "../config/toolConfirmations";
@@ -80,6 +80,15 @@ export const createClarification = async (
 
 	const dataToStore = extractedData || receipt.rawOcrText;
 
+	const user = await prisma.user.findUnique({
+		where: { id: userId },
+		select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
+	});
+
+	if (!user) {
+		throw new AppError(404, "User not found", "createClarification");
+	}
+
 	const clarificationSession = await prisma.clarificationSession.create({
 		data: {
 			receiptId,
@@ -93,6 +102,15 @@ export const createClarification = async (
 		},
 	});
 
+	const systemPrompt = buildExtractionPrompt({
+		userId: user.id,
+		userName: user.name,
+		defaultCurrency: user.defaultCurrency,
+		mode: 'single',
+		hasTools: false,
+		customContext: user.customContextPrompt || undefined,
+	});
+
 	const transactionllm = OpenAIllm.withStructuredOutput(
 		TransactionReceiptAiResponseSchema,
 		{ name: "extract_transaction", strict: true }
@@ -100,7 +118,7 @@ export const createClarification = async (
 
 	const initialPrompt = [
 		new SystemMessage({
-			content: RECEIPT_TRANSACTION_SYSTEM_PROMPT,
+			content: systemPrompt,
 			additional_kwargs: {
 				cache_control: { type: "ephemeral" }
 			}
@@ -324,6 +342,9 @@ export const sendClarificationMessage = async (
 		},
 		include: {
 			receipt: true,
+			user: {
+				select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
+			},
 		},
 	});
 
@@ -347,6 +368,15 @@ export const sendClarificationMessage = async (
 		);
 	}
 
+	const systemPrompt = buildExtractionPrompt({
+		userId: session.user.id,
+		userName: session.user.name,
+		defaultCurrency: session.user.defaultCurrency,
+		mode: 'single',
+		hasTools: true,
+		customContext: session.user.customContextPrompt || undefined,
+	});
+
 	await prisma.clarificationMessage.create({
 		data: {
 			sessionId: session.id,
@@ -368,7 +398,7 @@ export const sendClarificationMessage = async (
 
 	const conversationHistory = [
 		new SystemMessage({
-			content: `${RECEIPT_TRANSACTION_SYSTEM_PROMPT}\n\nReceipt OCR Text:\n${session.extractedData}`,
+			content: `${systemPrompt}\n\nReceipt OCR Text:\n${session.extractedData}`,
 		}),
 		...allMessages.map((msg) =>
 			msg.role === "user"
@@ -478,7 +508,7 @@ export const sendClarificationMessage = async (
 	const finalPrompt = [
 		{
 			role: "system",
-			content: `${RECEIPT_TRANSACTION_SYSTEM_PROMPT}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(allToolResults, null, 2)}`,
+			content: `${systemPrompt}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(allToolResults, null, 2)}`,
 		},
 		...conversationHistory.slice(1),
 		{
@@ -614,7 +644,12 @@ export const handleConfirmationResponse = async (
 }> => {
 	const session = await prisma.clarificationSession.findUnique({
 		where: { id: sessionId },
-		include: { receipt: true },
+		include: {
+			receipt: true,
+			user: {
+				select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
+			},
+		},
 	});
 
 	if (!session || session.userId !== userId) {
@@ -624,6 +659,15 @@ export const handleConfirmationResponse = async (
 	if (session.status !== "pending_confirmation") {
 		throw new AppError(400, "Session is not awaiting confirmation", "handleConfirmationResponse");
 	}
+
+	const systemPrompt = buildExtractionPrompt({
+		userId: session.user.id,
+		userName: session.user.name,
+		defaultCurrency: session.user.defaultCurrency,
+		mode: 'single',
+		hasTools: true,
+		customContext: session.user.customContextPrompt || undefined,
+	});
 
 	const pendingToolCalls = session.pendingToolCalls as any[];
 	const existingToolResults = session.toolResults as any || {};
@@ -662,7 +706,7 @@ export const handleConfirmationResponse = async (
 	const finalPrompt = [
 		{
 			role: "system",
-			content: `${RECEIPT_TRANSACTION_SYSTEM_PROMPT}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(newToolResults, null, 2)}`,
+			content: `${systemPrompt}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(newToolResults, null, 2)}`,
 		},
 		...allMessages.map((msg) => ({
 			role: msg.role as "user" | "assistant",

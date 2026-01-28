@@ -1,8 +1,5 @@
 import { TransactionReceiptAiResponseSchema } from "../schema/ai-formats";
-import {
-	RECEIPT_TRANSACTION_SYSTEM_PROMPT,
-	RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS,
-} from "../lib/prompts";
+import { buildExtractionPrompt } from "../lib/prompts";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../middlewares/errorHandler";
 import {
@@ -22,8 +19,27 @@ import { generateEmbedding } from "./embedding.service";
 
 export const generateTransaction = async (
 	input: string,
-	clarificationId: string
+	clarificationId: string,
+	userId: string
 ) => {
+	const user = await prisma.user.findUnique({
+		where: { id: userId },
+		select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
+	});
+
+	if (!user) {
+		throw new AppError(404, "User not found", "generateTransaction");
+	}
+
+	const systemPrompt = buildExtractionPrompt({
+		userId: user.id,
+		userName: user.name,
+		defaultCurrency: user.defaultCurrency,
+		mode: 'single',
+		hasTools: false,
+		customContext: user.customContextPrompt || undefined,
+	});
+
 	const transactionllm = OpenAIllm.withStructuredOutput(
 		TransactionReceiptAiResponseSchema,
 		{ name: "extract_transaction", strict: true }
@@ -31,7 +47,7 @@ export const generateTransaction = async (
 	const aiMsg = await transactionllm.invoke([
 		{
 			role: "system",
-			content: RECEIPT_TRANSACTION_SYSTEM_PROMPT,
+			content: systemPrompt,
 		},
 		{
 			role: "user",
@@ -132,7 +148,7 @@ export const initiateTransactionFromReceipt = async (
 
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
-		select: { id: true, name: true, defaultCurrency: true },
+		select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
 	});
 
 	if (!user) {
@@ -157,13 +173,15 @@ export const initiateTransactionFromReceipt = async (
 
 	const llmWithTools = OpenAIllmCreative.bindTools(allAITools, {});
 
-	const systemPrompt = RECEIPT_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS.replace(
-		"{userId}",
-		user.id
-	)
-		.replace("{userName}", user.name)
-		.replace("{defaultCurrency}", user.defaultCurrency)
-		.replace("{userBankAccountId}", userBankAccountId);
+	const systemPrompt = buildExtractionPrompt({
+		userId: user.id,
+		userName: user.name,
+		defaultCurrency: user.defaultCurrency,
+		mode: 'single',
+		hasTools: true,
+		userBankAccountId: userBankAccountId,
+		customContext: user.customContextPrompt || undefined,
+	});
 
 	const initialPrompt = [
 		{

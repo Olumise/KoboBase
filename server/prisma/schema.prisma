@@ -8,14 +8,15 @@ datasource db {
 }
 
 model User {
-  id              String   @id @default(uuid())
-  name            String
-  email           String
-  emailVerified   Boolean  @default(false) @map("email_verified")
-  image           String?
-  defaultCurrency String   @default("NGN") @map("default_currency") @db.VarChar(3)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                  String   @id @default(uuid())
+  name                String
+  email               String
+  emailVerified       Boolean  @default(false) @map("email_verified")
+  image               String?
+  defaultCurrency     String   @default("NGN") @map("default_currency") @db.VarChar(3)
+  customContextPrompt String?  @map("custom_context_prompt") @db.VarChar(1000)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   sessions              Session[]
   accounts              Account[]

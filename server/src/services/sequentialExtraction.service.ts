@@ -15,7 +15,7 @@ import {
 	shouldRequireConfirmation,
 	generateConfirmationQuestion,
 } from "../config/toolConfirmations";
-import { BATCH_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS } from "../lib/prompts";
+import { buildExtractionPrompt } from "../lib/prompts";
 import { generateEmbedding } from "./embedding.service";
 import * as z from "zod";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
@@ -81,7 +81,7 @@ export const initiateSequentialProcessing = async (
 
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
-		select: { id: true, name: true, defaultCurrency: true },
+		select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
 	});
 
 	if (!user) {
@@ -140,13 +140,15 @@ export const initiateSequentialProcessing = async (
 
 	const llmWithTools = OpenAIllmCreative.bindTools(allAITools, {});
 
-	const systemPrompt = BATCH_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS.replace(
-		/{userId}/g,
-		user.id
-	)
-		.replace(/{userName}/g, user.name)
-		.replace(/{defaultCurrency}/g, user.defaultCurrency)
-		.replace(/{userBankAccountId}/g, userBankAccountId);
+	const systemPrompt = buildExtractionPrompt({
+		userId: user.id,
+		userName: user.name,
+		defaultCurrency: user.defaultCurrency,
+		mode: 'batch',
+		hasTools: true,
+		userBankAccountId: userBankAccountId,
+		customContext: user.customContextPrompt || undefined,
+	});
 
 	const initialPrompt = [
 		new SystemMessage({

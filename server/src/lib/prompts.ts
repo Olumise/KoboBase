@@ -22,7 +22,7 @@ Input may contain noise (markdown, OCR text, UI labels). Ignore all noise and ex
 | receiver_bank | string | Receiving bank | Required field |
 | receiver_account_number | string | Destination account | Required field |
 | time_sent | string | ISO 8601 format | Parse from OCR |
-| status | enum | successful/pending/failed | Based on receipt |
+| status | enum | successful/pending/failed | Based on receipt | Treat all receipts as successful, except the user specifies its not or you see it in the receipt that it is not.
 | transaction_reference | string | Unique transaction ID | From receipt |
 | raw_input | string | Original OCR text | Preserve exactly |
 | summary | string | Detailed summary (see SUMMARY VALIDATION below) | Must be comprehensive |
@@ -138,6 +138,13 @@ const TRANSACTION_TYPE_EDGE_CASES = `## Transaction Type Edge Cases
 - Only set payment_method if clearly identifiable (e.g., "POS" = card, "Bank Transfer" = transfer)
 - If unsure or ambiguous, always ask user rather than guessing`;
 
+const CUSTOM_USER_CONTEXT = `## Custom User Instructions
+
+The user has provided the following custom instructions to guide transaction extraction:
+
+{customContext}
+
+**IMPORTANT**: Apply these user-provided instructions when extracting transactions. However, they should supplement (not replace) the core extraction rules above. If there's any conflict between user instructions and critical validation rules (like required fields, output schema), prioritize the core rules.`;
 
 const USER_INTERACTION_RULES = `## User Questions vs. Providing Data
 
@@ -341,6 +348,7 @@ export interface PromptBuildOptions {
 	mode: 'single' | 'batch';
 	hasTools: boolean;
 	userBankAccountId?: string;
+	customContext?: string;
 }
 
 export function buildExtractionPrompt(options: PromptBuildOptions): string {
@@ -355,6 +363,12 @@ export function buildExtractionPrompt(options: PromptBuildOptions): string {
 	prompt += `\n\n${DESCRIPTION_VALIDATION}`;
 	prompt += `\n\n${SUMMARY_VALIDATION}`;
 	prompt += `\n\n${TRANSACTION_TYPE_EDGE_CASES}`;
+
+	// Add custom user context if provided
+	if (options.customContext && options.customContext.trim()) {
+		prompt += `\n\n${CUSTOM_USER_CONTEXT.replace(/{customContext}/g, options.customContext)}`;
+	}
+
 	prompt += `\n\n${USER_INTERACTION_RULES}`;
 
 	// Conditional sections based on mode
