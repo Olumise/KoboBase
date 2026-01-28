@@ -25,6 +25,8 @@ model User {
   categories            Category[]
   bankAccounts          BankAccount[]
   batchSessions         BatchSession[]
+  llmUsageSessions      LLMUsageSession[]
+  costMetrics           UserCostMetrics?
 
   @@unique([email])
   @@map("user")
@@ -123,6 +125,7 @@ model ClarificationSession {
   transaction           Transaction?           @relation(fields: [transactionId], references: [id])
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   clarificationMessages ClarificationMessage[]
+  llmUsage              LLMUsageSession?
 
   @@index([receiptId])
   @@index([userId])
@@ -181,7 +184,7 @@ model Contact {
   transactions    Transaction[]
 
   @@index([normalizedName])
-  @@map("senders")
+  @@map("contacts")
 }
 
 model Session {
@@ -294,11 +297,65 @@ model BatchSession {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receipt  Receipt          @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  llmUsage LLMUsageSession?
 
   @@index([receiptId])
   @@index([userId])
   @@index([status])
   @@map("batch_sessions")
+}
+
+model LLMUsageSession {
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  clarificationSessionId String?   @unique @map("clarification_session_id")
+  batchSessionId         String?   @unique @map("batch_session_id")
+  totalInputTokens       Int       @default(0) @map("total_input_tokens")
+  totalOutputTokens      Int       @default(0) @map("total_output_tokens")
+  totalTokens            Int       @default(0) @map("total_tokens")
+  totalCostUsd           Decimal   @default(0) @db.Decimal(10, 6) @map("total_cost_usd")
+  callBreakdown          Json?     @map("call_breakdown")
+  receiptId              String?   @map("receipt_id")
+  documentType           String?   @db.VarChar(50) @map("document_type")
+  transactionCount       Int?      @map("transaction_count")
+  processingMode         String?   @db.VarChar(20) @map("processing_mode")
+  startedAt              DateTime  @default(now()) @map("started_at")
+  completedAt            DateTime? @map("completed_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clarificationSession ClarificationSession? @relation(fields: [clarificationSessionId], references: [id], onDelete: Cascade)
+  batchSession         BatchSession?         @relation(fields: [batchSessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([processingMode])
+  @@map("llm_usage_sessions")
+}
+
+model UserCostMetrics {
+  id                    String    @id @default(uuid())
+  userId                String    @unique @map("user_id")
+  totalTokensUsed       Int       @default(0) @map("total_tokens_used")
+  totalCostUsd          Decimal   @default(0) @db.Decimal(10, 6) @map("total_cost_usd")
+  clarificationSessions Int       @default(0) @map("clarification_sessions")
+  batchSessions         Int       @default(0) @map("batch_sessions")
+  sequentialSessions    Int       @default(0) @map("sequential_sessions")
+  ocrCalls              Int       @default(0) @map("ocr_calls")
+  detectionCalls        Int       @default(0) @map("detection_calls")
+  extractionCalls       Int       @default(0) @map("extraction_calls")
+  clarificationCalls    Int       @default(0) @map("clarification_calls")
+  embeddingCalls        Int       @default(0) @map("embedding_calls")
+  currentMonthTokens    Int       @default(0) @map("current_month_tokens")
+  currentMonthCost      Decimal   @default(0) @db.Decimal(10, 6) @map("current_month_cost")
+  monthStartDate        DateTime? @map("month_start_date")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_cost_metrics")
 }

@@ -15,6 +15,9 @@ import {
 import { BATCH_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS } from "../lib/prompts";
 import { initiateSequentialProcessing } from "./sequentialExtraction.service";
 import * as z from "zod";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens, estimateTokensForTools } from "../utils/tokenCounter";
+import { trackLLMCall, initializeSession } from "./costTracking.service";
 
 export const initiateBatchTransactionsFromReceipt = async (
 	receiptId: string,
@@ -115,23 +118,30 @@ export const initiateBatchTransactionsFromReceipt = async (
 		.replace(/{userBankAccountId}/g, userBankAccountId);
 
 	const initialPrompt = [
-		{
-			role: "system",
+		new SystemMessage({
 			content: systemPrompt,
 			additional_kwargs: {
 				cache_control: { type: "ephemeral" }
 			}
-		},
-		{
-			role: "user",
+		}),
+		new HumanMessage({
 			content: `Receipt OCR Text:\n${receipt.rawOcrText}\n\nPlease extract ALL distinct transactions from this document and call the appropriate tools for EACH transaction.`,
-		},
+		}),
 	];
+
+	// Count input tokens (including tool definitions)
+	const baseInputTokens = await countTokensForMessages(initialPrompt);
+	const toolTokens = estimateTokensForTools(allAITools);
+	const totalInputTokens = baseInputTokens + toolTokens;
 
 	console.log("Invoking LLM with batch tools...");
 	const aiResponse = await llmWithTools.invoke(initialPrompt);
 	console.log("Batch AI response content:", aiResponse.content);
 	console.log("Batch tool calls:", JSON.stringify(aiResponse.tool_calls, null, 2));
+
+	// Extract output tokens
+	const tokenUsage = extractTokenUsageFromResponse(aiResponse);
+	const outputTokens = tokenUsage?.outputTokens || estimateOutputTokens(aiResponse);
 
 	const toolCalls = aiResponse.tool_calls || [];
 
@@ -166,6 +176,8 @@ export const initiateBatchTransactionsFromReceipt = async (
 	console.log("Auto tool results:", JSON.stringify(autoToolResults, null, 2));
 
 	let batchSession;
+	let llmUsageSessionId: string | undefined;
+
 	if (existingBatchSession && existingBatchSession.processingMode === "batch") {
 		batchSession = await prisma.batchSession.update({
 			where: { id: existingBatchSession.id },
@@ -197,6 +209,26 @@ export const initiateBatchTransactionsFromReceipt = async (
 				},
 			},
 		});
+	}
+
+	// Initialize LLM usage session and track the call
+	try {
+		llmUsageSessionId = await initializeSession(userId, "batch", batchSession.id, {
+			receiptId,
+			transactionCount: toolCalls.length,
+			processingMode: "batch",
+		});
+
+		await trackLLMCall(
+			llmUsageSessionId,
+			"extraction",
+			"openai",
+			"gpt-4o",
+			totalInputTokens,
+			outputTokens
+		);
+	} catch (trackingError) {
+		console.error("Failed to track batch extraction LLM call:", trackingError);
 	}
 
 	if (confirmationTools.length > 0) {

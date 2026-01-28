@@ -59,7 +59,12 @@ export const extractReceiptRawText = async (receiptId: string) => {
 	let processingMode = "single";
 
 	try {
-		detection = await detectDocumentType(text.extracted_text || "");
+		const result = await detectDocumentType(
+			text.extracted_text || "",
+			receipt.userId,
+			receiptId
+		);
+		detection = result.detection;
 		processingMode = determineProcessingMode(detection);
 	} catch (error) {
 		console.error("Document detection failed, falling back to single mode:", error);

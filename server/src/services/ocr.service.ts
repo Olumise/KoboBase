@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { PDFParse } from "pdf-parse";
 import { OCR_TRANSACTION_EXTRACTION_PROMPT } from "../lib/prompts";
 import { AppError } from "../middlewares/errorHandler";
+import { countTokensForText } from "../utils/tokenCounter";
+import { trackLLMCall } from "./costTracking.service";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
@@ -23,7 +25,11 @@ const resolveFileBuffer = async (input: Buffer | string): Promise<Buffer> => {
 	return downloadFile(input);
 };
 
-export const googleOCR = async (fileInput: Buffer | string, mimeType: string) => {
+export const googleOCR = async (
+	fileInput: Buffer | string,
+	mimeType: string,
+	sessionId?: string
+) => {
 	const fileBuffer = await resolveFileBuffer(fileInput);
 	const base64ImageFile = fileBuffer.toString("base64");
 	const contents = [
@@ -37,6 +43,11 @@ export const googleOCR = async (fileInput: Buffer | string, mimeType: string) =>
 			text: OCR_TRANSACTION_EXTRACTION_PROMPT,
 		},
 	];
+
+	const promptTokens = await countTokensForText(OCR_TRANSACTION_EXTRACTION_PROMPT);
+	const imageTokens = 85;
+	const inputTokens = promptTokens + imageTokens;
+
 	const response = await ai.models.generateContent({
 		model: "gemini-3-flash-preview",
 		contents: contents,
@@ -47,6 +58,21 @@ export const googleOCR = async (fileInput: Buffer | string, mimeType: string) =>
 	const responseText = response.text;
 	if (!responseText) {
 		throw new AppError(500, "No response from AI model", "googleOCR");
+	}
+
+	const outputTokens = await countTokensForText(responseText);
+
+	if (sessionId) {
+		await trackLLMCall(
+			sessionId,
+			"ocr",
+			"google",
+			"gemini-3-flash-preview",
+			inputTokens,
+			outputTokens
+		).catch((error) => {
+			console.error("Failed to track OCR LLM call:", error);
+		});
 	}
 
 	try {

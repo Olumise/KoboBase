@@ -15,6 +15,9 @@ import { executeAITool } from "./aiToolExecutor.service";
 import { allAITools } from "../tools";
 import { shouldRequireConfirmation, generateConfirmationQuestion } from "../config/toolConfirmations";
 import { OpenAIllm } from "../models/llm.models";
+import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
+import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens, estimateTokensForTools } from "../utils/tokenCounter";
+import { trackLLMCall, initializeSession, finalizeSession } from "./costTracking.service";
 
 export const createClarification = async (
 	data: CreateClarificationSessionType
@@ -96,20 +99,42 @@ export const createClarification = async (
 	);
 
 	const initialPrompt = [
-		{
-			role: "system",
+		new SystemMessage({
 			content: RECEIPT_TRANSACTION_SYSTEM_PROMPT,
 			additional_kwargs: {
 				cache_control: { type: "ephemeral" }
 			}
-		},
-		{
-			role: "user",
+		}),
+		new HumanMessage({
 			content: `Receipt OCR Text:\n${dataToStore}\n\nPlease extract all transaction details from this receipt.`,
-		},
+		}),
 	];
 
+	const inputTokens = await countTokensForMessages(initialPrompt);
+
 	const aiResponse = await transactionllm.invoke(initialPrompt);
+
+	const tokenUsage = extractTokenUsageFromResponse(aiResponse);
+	const outputTokens = tokenUsage?.outputTokens || estimateOutputTokens(aiResponse);
+
+	let llmUsageSessionId: string | undefined;
+	try {
+		llmUsageSessionId = await initializeSession(userId, "clarification", clarificationSession.id, {
+			receiptId,
+			processingMode: "clarification",
+		});
+
+		await trackLLMCall(
+			llmUsageSessionId,
+			"clarification",
+			"openai",
+			"gpt-4o",
+			inputTokens,
+			outputTokens
+		);
+	} catch (trackingError) {
+		console.error("Failed to track clarification LLM call:", trackingError);
+	}
 
 	await prisma.clarificationMessage.create({
 		data: {
@@ -231,6 +256,13 @@ export const completeClarificationSession = async (
 		},
 	});
 
+	// Finalize LLM usage session
+	try {
+		await finalizeSession(sessionId);
+	} catch (trackingError) {
+		console.error("Failed to finalize clarification session:", trackingError);
+	}
+
 	return updatedSession;
 };
 
@@ -335,21 +367,44 @@ export const sendClarificationMessage = async (
 	const existingToolResults = (session.toolResults as any) || {};
 
 	const conversationHistory = [
-		{
-			role: "system",
+		new SystemMessage({
 			content: `${RECEIPT_TRANSACTION_SYSTEM_PROMPT}\n\nReceipt OCR Text:\n${session.extractedData}`,
-		},
-		...allMessages.map((msg) => ({
-			role: msg.role as "user" | "assistant",
-			content: msg.messageText,
-		})),
+		}),
+		...allMessages.map((msg) =>
+			msg.role === "user"
+				? new HumanMessage({ content: msg.messageText })
+				: new AIMessage({ content: msg.messageText })
+		),
 	];
+
+	// Count input tokens (including tool definitions)
+	const baseInputTokens = await countTokensForMessages(conversationHistory);
+	const toolTokens = estimateTokensForTools(allAITools);
+	const totalInputTokens = baseInputTokens + toolTokens;
 
 	const llmWithTools = OpenAIllm.bindTools(allAITools, {
 		tool_choice: "auto",
 	});
 
 	const aiResponseWithTools = await llmWithTools.invoke(conversationHistory);
+
+	// Extract output tokens
+	const tokenUsage = extractTokenUsageFromResponse(aiResponseWithTools);
+	const outputTokens = tokenUsage?.outputTokens || estimateOutputTokens(aiResponseWithTools);
+
+	// Track LLM call
+	try {
+		await trackLLMCall(
+			session.id,
+			"clarification",
+			"openai",
+			"gpt-4o",
+			totalInputTokens,
+			outputTokens
+		);
+	} catch (trackingError) {
+		console.error("Failed to track clarification message LLM call:", trackingError);
+	}
 
 	const newToolCalls = aiResponseWithTools.tool_calls || [];
 
@@ -490,10 +545,11 @@ Populate ALL enrichment_data fields. NEVER leave any field undefined. Follow all
 	});
 
 	if (batchSession) {
+		console.log('Its a Batch session')
 		const extractedData = batchSession.extractedData as any;
 		const transactionResults = extractedData?.transaction_results || [];
 		const currentIndex = batchSession.currentIndex || 0;
-
+console.log('the batch session', batchSession)
 		if (currentIndex < transactionResults.length) {
 			const currentTransaction = {
 				transaction_index: currentIndex,
@@ -508,6 +564,7 @@ Populate ALL enrichment_data fields. NEVER leave any field undefined. Follow all
 				enrichment_data: aiResponse.enrichment_data,
 				notes: aiResponse.notes,
 			};
+			console.log('currentTransaction', currentTransaction)
 
 			transactionResults[currentIndex] = currentTransaction;
 

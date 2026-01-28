@@ -18,6 +18,9 @@ import {
 import { BATCH_TRANSACTION_SYSTEM_PROMPT_WITH_TOOLS } from "../lib/prompts";
 import { generateEmbedding } from "./embedding.service";
 import * as z from "zod";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens, estimateTokensForTools } from "../utils/tokenCounter";
+import { trackLLMCall, initializeSession } from "./costTracking.service";
 
 export const initiateSequentialProcessing = async (
 	receiptId: string,
@@ -101,7 +104,7 @@ export const initiateSequentialProcessing = async (
 		);
 	}
 
-	const existingBatchSession = await prisma.batchSession.findFirst({
+	let existingBatchSession = await prisma.batchSession.findFirst({
 		where: {
 			receiptId,
 			userId,
@@ -112,25 +115,26 @@ export const initiateSequentialProcessing = async (
 
 	if (existingBatchSession) {
 		const extractedData = existingBatchSession.extractedData as any;
-		const transactionResults = extractedData?.transaction_results || [];
-		const currentIndex = existingBatchSession.currentIndex || 0;
+		const hasTransactionResults = extractedData?.transaction_results && extractedData.transaction_results.length > 0;
 
-		if (
-			transactionResults.length > 0 &&
-			currentIndex < transactionResults.length
-		) {
-			const currentTransaction = transactionResults[currentIndex];
+		if (hasTransactionResults) {
+			const transactionResults = extractedData.transaction_results;
+			const currentIndex = existingBatchSession.currentIndex || 0;
 
-			return {
-				batch_session_id: existingBatchSession.id,
-				total_transactions: transactionResults.length,
-				successfully_initiated: currentIndex,
-				transactions: [currentTransaction],
-				overall_confidence: currentTransaction.confidence_score,
-				processing_notes: `Sequential session in progress. Showing transaction ${
-					currentIndex + 1
-				} of ${transactionResults.length}.`,
-			};
+			if (currentIndex < transactionResults.length) {
+				const currentTransaction = transactionResults[currentIndex];
+
+				return {
+					batch_session_id: existingBatchSession.id,
+					total_transactions: transactionResults.length,
+					successfully_initiated: currentIndex,
+					transactions: [currentTransaction],
+					overall_confidence: currentTransaction.confidence_score,
+					processing_notes: `Sequential session in progress. Showing transaction ${
+						currentIndex + 1
+					} of ${transactionResults.length}.`,
+				};
+			}
 		}
 	}
 
@@ -145,18 +149,20 @@ export const initiateSequentialProcessing = async (
 		.replace(/{userBankAccountId}/g, userBankAccountId);
 
 	const initialPrompt = [
-		{
-			role: "system",
+		new SystemMessage({
 			content: systemPrompt,
 			additional_kwargs: {
 				cache_control: { type: "ephemeral" }
 			}
-		},
-		{
-			role: "user",
+		}),
+		new HumanMessage({
 			content: `Receipt OCR Text:\n${receipt.rawOcrText}\n\nPlease extract ALL distinct transactions from this document and call the appropriate tools for EACH transaction.`,
-		},
+		}),
 	];
+
+	const baseInputTokens = await countTokensForMessages(initialPrompt);
+	const toolTokens = estimateTokensForTools(allAITools);
+	const totalInputTokens = baseInputTokens + toolTokens;
 
 	console.log("Invoking LLM with sequential tools...");
 	const aiResponse = await llmWithTools.invoke(initialPrompt);
@@ -165,6 +171,10 @@ export const initiateSequentialProcessing = async (
 		"Sequential tool calls:",
 		JSON.stringify(aiResponse.tool_calls, null, 2)
 	);
+
+	// Extract output tokens
+	const tokenUsage = extractTokenUsageFromResponse(aiResponse);
+	const outputTokens = tokenUsage?.outputTokens || estimateOutputTokens(aiResponse);
 
 	const toolCalls = aiResponse.tool_calls || [];
 
@@ -202,34 +212,84 @@ export const initiateSequentialProcessing = async (
 
 	console.log("Auto tool results:", JSON.stringify(autoToolResults, null, 2));
 
-	const batchSession = await prisma.batchSession.create({
-		data: {
-			receiptId,
-			userId,
-			totalExpected: 0,
-			totalProcessed: 0,
-			currentIndex: 0,
-			status: "in_progress",
-			processingMode: "sequential",
-			extractedData: {
-				aiResponse:
-					typeof aiResponse.content === "string"
-						? aiResponse.content
-						: JSON.stringify(aiResponse.content),
-				toolCalls: toolCalls.map((tc) => ({
-					name: tc.name,
-					args: tc.args,
-					id: tc.id,
-				})),
-				autoToolResults: autoToolResults,
-				confirmationTools: confirmationTools.map((tc) => ({
-					name: tc.name,
-					args: tc.args,
-					id: tc.id,
-				})),
+	let batchSession;
+
+	if (existingBatchSession) {
+		console.log("Updating existing batch session:", existingBatchSession.id);
+		batchSession = await prisma.batchSession.update({
+			where: { id: existingBatchSession.id },
+			data: {
+				extractedData: {
+					...(existingBatchSession.extractedData as any),
+					aiResponse:
+						typeof aiResponse.content === "string"
+							? aiResponse.content
+							: JSON.stringify(aiResponse.content),
+					toolCalls: toolCalls.map((tc) => ({
+						name: tc.name,
+						args: tc.args,
+						id: tc.id,
+					})),
+					autoToolResults: autoToolResults,
+					confirmationTools: confirmationTools.map((tc) => ({
+						name: tc.name,
+						args: tc.args,
+						id: tc.id,
+					})),
+				},
 			},
-		},
-	});
+		});
+	} else {
+		console.log("Creating new batch session");
+		batchSession = await prisma.batchSession.create({
+			data: {
+				receiptId,
+				userId,
+				totalExpected: 0,
+				totalProcessed: 0,
+				currentIndex: 0,
+				status: "in_progress",
+				processingMode: "sequential",
+				extractedData: {
+					aiResponse:
+						typeof aiResponse.content === "string"
+							? aiResponse.content
+							: JSON.stringify(aiResponse.content),
+					toolCalls: toolCalls.map((tc) => ({
+						name: tc.name,
+						args: tc.args,
+						id: tc.id,
+					})),
+					autoToolResults: autoToolResults,
+					confirmationTools: confirmationTools.map((tc) => ({
+						name: tc.name,
+						args: tc.args,
+						id: tc.id,
+					})),
+				},
+			},
+		});
+	}
+
+	
+	try {
+		const llmUsageSessionId = await initializeSession(userId, "sequential", batchSession.id, {
+			receiptId,
+			transactionCount: toolCalls.length,
+			processingMode: "sequential",
+		});
+
+		await trackLLMCall(
+			llmUsageSessionId,
+			"extraction",
+			"openai",
+			"gpt-4o",
+			totalInputTokens,
+			outputTokens
+		);
+	} catch (trackingError) {
+		console.error("Failed to track sequential extraction LLM call:", trackingError);
+	}
 
 	if (confirmationTools.length > 0) {
 		const firstToolCall = confirmationTools[0];
@@ -551,7 +611,8 @@ export const approveSequentialTransaction = async (
 	const txData = transactionItem.transaction;
 	const enrichment = transactionItem.enrichment_data;
 
-	if (!txData) {
+	// Check if transaction is complete
+	if (!txData || transactionItem.is_complete !== "true") {
 		throw new AppError(
 			400,
 			"Transaction data is incomplete. Please complete clarification first.",

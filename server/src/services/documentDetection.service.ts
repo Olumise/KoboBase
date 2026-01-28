@@ -1,6 +1,9 @@
 import { DocumentDetectionSchema, DocumentDetection } from "../schema/ai-formats";
 import { OpenAIllmGPT4Turbo as OpenAIllm } from "../models/llm.models";
 import { AppError } from "../middlewares/errorHandler";
+import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens } from "../utils/tokenCounter";
+import { trackLLMCall, initializeSession } from "./costTracking.service";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
 const DOCUMENT_DETECTION_PROMPT = `You are a financial document analyzer. Your task is to analyze OCR-extracted text from financial documents and determine:
 
@@ -20,7 +23,6 @@ const DOCUMENT_DETECTION_PROMPT = `You are a financial document analyzer. Your t
 3. **Processing Mode Recommendation**:
    - single: For 1 transaction
    - sequential: For 2+ transactions (processed one at a time)
-   - batch: For 2+ transactions (can be processed and reviewed together)
 
 4. **Document Characteristics**: Analyze the structure and format
 
@@ -35,8 +37,10 @@ Important Guidelines:
 Analyze the document carefully and provide accurate detection results.`;
 
 export const detectDocumentType = async (
-	ocrText: string
-): Promise<DocumentDetection> => {
+	ocrText: string,
+	userId?: string,
+	receiptId?: string
+): Promise<{ detection: DocumentDetection; sessionId?: string }> => {
 	if (!ocrText || ocrText.trim().length === 0) {
 		throw new AppError(
 			400,
@@ -46,26 +50,59 @@ export const detectDocumentType = async (
 	}
 
 	try {
+		const messages = [
+			new SystemMessage({
+				content: DOCUMENT_DETECTION_PROMPT,
+				additional_kwargs: {
+					cache_control: { type: "ephemeral" }
+				}
+			}),
+			new HumanMessage({
+				content: `Please analyze this financial document and detect its type and transaction count:\n\n${ocrText}`,
+			}),
+		];
+
+
+		const inputTokens = await countTokensForMessages(messages);
+
 		const llmWithStructuredOutput = OpenAIllm.withStructuredOutput(
 			DocumentDetectionSchema,
 			{ name: "detect_document", strict: true }
 		);
 
-		const result = await llmWithStructuredOutput.invoke([
-			{
-				role: "system",
-				content: DOCUMENT_DETECTION_PROMPT,
-				additional_kwargs: {
-					cache_control: { type: "ephemeral" }
-				}
-			},
-			{
-				role: "user",
-				content: `Please analyze this financial document and detect its type and transaction count:\n\n${ocrText}`,
-			},
-		]);
+		const result = await llmWithStructuredOutput.invoke(messages);
+		const detection = result as DocumentDetection;
 
-		return result as DocumentDetection;
+	
+		const tokenUsage = extractTokenUsageFromResponse(result);
+		const outputTokens = tokenUsage?.outputTokens || estimateOutputTokens(result);
+
+	
+		let sessionId: string | undefined;
+		if (userId && receiptId) {
+			try {
+				const processingMode = determineProcessingMode(detection);
+				sessionId = await initializeSession(userId, "detection", null, {
+					receiptId,
+					documentType: detection.document_type,
+					transactionCount: detection.transaction_count,
+					processingMode: processingMode === "single" ? "clarification" : processingMode,
+				});
+
+				await trackLLMCall(
+					sessionId,
+					"detection",
+					"openai",
+					"gpt-4.1",
+					inputTokens,
+					outputTokens
+				);
+			} catch (trackingError) {
+				console.error("Failed to track document detection LLM call:", trackingError);
+			}
+		}
+
+		return { detection, sessionId };
 	} catch (error) {
 		console.error("Error in document detection:", error);
 		throw new AppError(
@@ -78,7 +115,7 @@ export const detectDocumentType = async (
 
 export const determineProcessingMode = (
 	detection: DocumentDetection
-): "single" | "batch" | "sequential" => {
+): "single" | "sequential" => {
 	const { transaction_count, confidence } = detection;
 
 	if (confidence < 0.6 || transaction_count === 0) {
