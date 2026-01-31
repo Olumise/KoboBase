@@ -30,7 +30,7 @@ KoboBase is an AI-powered financial transaction extraction and management system
 - **Validation**: Zod for schema validation
 - **File Processing**: Multer for uploads, pdf-parse for PDFs
 
-## Prerequisites
+<!-- ## Prerequisites
 
 - Node.js (v18 or higher recommended)
 - PostgreSQL database
@@ -83,9 +83,9 @@ npx prisma migrate dev
 npm run prisma-seed
 ```
 
-## Running the Application
+## Running the Application -->
 
-### Development Mode
+<!-- ### Development Mode
 ```bash
 npm start
 ```
@@ -104,7 +104,7 @@ npx prisma studio
 
 # Reset database (caution: deletes all data)
 npx prisma migrate reset
-```
+``` -->
 
 ## Project Structure
 
@@ -332,7 +332,7 @@ KoboBase uses [better-auth](https://github.com/better-auth/better-auth) for auth
 3. Include the token in the `Authorization` header for authenticated requests
 4. The `authVerify` middleware validates tokens and populates `req.user`
 
-## Error Handling
+<!-- ## Error Handling
 
 All API errors return JSON responses:
 
@@ -415,10 +415,10 @@ All API errors return JSON responses:
 - Verify storage bucket permissions
 - Ensure file size is within limits (configured in multer)
 
-### Authentication Errors
-- Verify `BETTER_AUTH_SECRET` is set and consistent
+### Authentication Errors -->
+<!-- - Verify `BETTER_AUTH_SECRET` is set and consistent
 - Check token expiration
-- Ensure `BETTER_AUTH_URL` matches deployment URL
+- Ensure `BETTER_AUTH_URL` matches deployment URL -->
 
 
 
