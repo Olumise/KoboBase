@@ -26,6 +26,12 @@ export const generateTransactionController = async (
 	next: NextFunction
 ) => {
 	const { input, clarificationId } = req.body;
+	const userId = req.user?.id;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "generateTransactionController");
+	}
+
 	if (!input) {
 		throw new AppError(
 			400,
@@ -34,7 +40,7 @@ export const generateTransactionController = async (
 		);
 	}
 	try {
-		const transaction = await generateTransaction(input, clarificationId);
+		const transaction = await generateTransaction(input, clarificationId, userId);
 		res.send(transaction);
 	} catch (err) {
 		next(err);

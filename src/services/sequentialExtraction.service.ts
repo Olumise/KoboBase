@@ -20,6 +20,7 @@ import * as z from "zod";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens, estimateTokensForTools } from "../utils/tokenCounter";
 import { trackLLMCall, initializeSession } from "./costTracking.service";
+import { completeClarificationSession } from "./clarification.service";
 
 export const initiateSequentialProcessing = async (
 	receiptId: string,
@@ -685,6 +686,18 @@ export const approveSequentialTransaction = async (
 		},
 	});
 
+	if (transactionItem.clarification_session_id) {
+		try {
+			await completeClarificationSession(
+				transactionItem.clarification_session_id,
+				userId,
+				transaction.id
+			);
+		} catch (clarificationError) {
+			console.error("Failed to complete clarification session:", clarificationError);
+		}
+	}
+
 	const summary =
 		txData.summary ||
 		txData.description ||
@@ -814,6 +827,19 @@ export const skipSequentialTransaction = async (
 			"No more transactions to skip",
 			"skipSequentialTransaction"
 		);
+	}
+
+	const transactionItem = transactionResults[currentIndex];
+
+	if (transactionItem.clarification_session_id) {
+		try {
+			await completeClarificationSession(
+				transactionItem.clarification_session_id,
+				userId
+			);
+		} catch (clarificationError) {
+			console.error("Failed to complete clarification session:", clarificationError);
+		}
 	}
 
 	const nextIndex = currentIndex + 1;

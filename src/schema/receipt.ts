@@ -5,7 +5,7 @@ export const DecimalSchema = z.union([z.string(), z.number()]);
 export const ReceiptSchema = z.object({
 	userId: z.string(),
 	fileUrl: z.string().max(500),
-	fileType: z.string().max(10),
+	fileType: z.string().max(50),
 	fileSize: z.number().int().nullable(),
 	rawOcrText: z.string().nullable(),
 	ocrConfidence: DecimalSchema.nullable(),
@@ -16,7 +16,7 @@ export const ReceiptSchema = z.object({
 export const AddReceiptSchema = z.object({
 	userId: z.string(),
 	fileUrl: z.string().max(500),
-	fileType: z.string().max(10),
+	fileType: z.string().max(50),
 	fileSize: z.number().int().nullable(),
 });
 
@@ -24,7 +24,7 @@ export const updateReceiptSchema = ReceiptSchema.partial();
 
 export const UpdateReceiptFileSchema = z.object({
 	fileUrl: z.string().max(500),
-	fileType: z.string().max(10),
+	fileType: z.string().max(50),
 	fileSize: z.number().int().nullable(),
 });
 

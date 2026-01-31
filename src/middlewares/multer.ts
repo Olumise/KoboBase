@@ -17,6 +17,20 @@ const pdfFilter = (req: Request, file: Express.Multer.File, cb: FileFilterCallba
   }
 };
 
+const receiptFilter = (req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
+  const allowedTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/pdf'
+  ];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only JPEG, PNG, WEBP, and PDF allowed!'));
+  }
+};
+
 const storage = multer.memoryStorage();
 export const pdfUpload = multer({
 	storage: storage,
@@ -31,5 +45,13 @@ export const imageUpload = multer({
 	fileFilter: imageFilter,
 	limits: {
 		fileSize: 1024 * 1024 * 5,
+	},
+});
+
+export const receiptUpload = multer({
+	storage: storage,
+	fileFilter: receiptFilter,
+	limits: {
+		fileSize: 1024 * 1024 * 10, // 10MB for PDFs
 	},
 });

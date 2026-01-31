@@ -15,6 +15,8 @@ model User {
   image               String?
   defaultCurrency     String   @default("NGN") @map("default_currency") @db.VarChar(3)
   customContextPrompt String?  @map("custom_context_prompt") @db.VarChar(1000)
+  hourlyUploadLimit   Int?     @map("hourly_upload_limit")
+  dailyUploadLimit    Int?     @map("daily_upload_limit")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
@@ -28,6 +30,7 @@ model User {
   batchSessions         BatchSession[]
   llmUsageSessions      LLMUsageSession[]
   costMetrics           UserCostMetrics?
+  rateLimits            UserRateLimit[]
 
   @@unique([email])
   @@map("user")
@@ -37,7 +40,7 @@ model Receipt {
   id                    String    @id @default(uuid())
   userId                String    @map("user_id")
   fileUrl               String    @map("file_url") @db.VarChar(500)
-  fileType              String    @map("file_type") @db.VarChar(10)
+  fileType              String    @map("file_type") @db.VarChar(50)
   fileSize              Int?      @map("file_size")
   rawOcrText            String?   @map("raw_ocr_text") @db.Text
   ocrConfidence         Decimal?  @map("ocr_confidence") @db.Decimal(5, 2)
@@ -48,6 +51,7 @@ model Receipt {
   expectedTransactions  Int?      @default(1) @map("expected_transactions")
   processedTransactions Int       @default(0) @map("processed_transactions")
   detectionCompleted    Boolean   @default(false) @map("detection_completed")
+  extractionMetadata    Json?     @map("extraction_metadata")
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions          Transaction[]
@@ -359,4 +363,24 @@ model UserCostMetrics {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_cost_metrics")
+}
+
+model UserRateLimit {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  limitType    String   @map("limit_type") @db.VarChar(20)
+  windowStart  DateTime @map("window_start")
+  windowEnd    DateTime @map("window_end")
+  requestCount Int      @default(0) @map("request_count")
+  maxRequests  Int      @map("max_requests")
+  endpointPath String?  @map("endpoint_path") @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, limitType, windowStart])
+  @@index([userId, limitType])
+  @@index([windowEnd])
+  @@map("user_rate_limits")
 }

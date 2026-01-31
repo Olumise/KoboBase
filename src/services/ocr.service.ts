@@ -106,3 +106,89 @@ export const parsePDFText = async(pdfInput: Buffer | string) => {
 	await parser.destroy();
 	return result
 }
+
+const SCANNED_PDF_THRESHOLD = 50;
+const MAX_PDF_PAGES = 10;
+const PDF_PARSE_TIMEOUT = 30000;
+
+type PDFExtractionResult = {
+	extracted: boolean;
+	extracted_text: string | null;
+	failure_reason: string | null;
+	metadata?: {
+		isScanned: boolean;
+		pageCount: number;
+		extractionMethod: 'native' | 'ocr' | 'hybrid';
+	};
+};
+
+export const extractPDFText = async (
+	pdfInput: Buffer | string,
+	sessionId?: string
+): Promise<PDFExtractionResult> => {
+	const pdfBuffer = await resolveFileBuffer(pdfInput);
+
+	const info = await getPDFInfo(pdfBuffer);
+	const pageCount = info.total;
+
+	if (pageCount > MAX_PDF_PAGES) {
+		throw new AppError(
+			400,
+			`PDF has ${pageCount} pages. Maximum allowed is ${MAX_PDF_PAGES}. Please split the document.`,
+			"extractPDFText"
+		);
+	}
+
+	const parsePromise = parsePDFText(pdfBuffer);
+	const timeoutPromise = new Promise<string>((_, reject) => {
+		setTimeout(() => reject(new Error('PDF parsing timeout')), PDF_PARSE_TIMEOUT);
+	});
+
+	let nativeText: string;
+	try {
+		const result = await Promise.race([parsePromise, timeoutPromise]);
+		nativeText = typeof result === 'string' ? result : result.text;
+	} catch (error) {
+		const ocrResult = await googleOCR(pdfBuffer, 'application/pdf', sessionId);
+		return {
+			extracted: ocrResult.extracted,
+			extracted_text: ocrResult.extracted_text,
+			failure_reason: ocrResult.failure_reason,
+			metadata: {
+				isScanned: true,
+				pageCount,
+				extractionMethod: 'ocr'
+			}
+		};
+	}
+
+	const textLength = nativeText.trim().length;
+	const charsPerPage = textLength / pageCount;
+
+	const isScanned = charsPerPage < SCANNED_PDF_THRESHOLD;
+
+	if (isScanned || textLength < 20) {
+		const ocrResult = await googleOCR(pdfBuffer, 'application/pdf', sessionId);
+		return {
+			extracted: ocrResult.extracted,
+			extracted_text: ocrResult.extracted_text,
+			failure_reason: ocrResult.failure_reason,
+			metadata: {
+				isScanned: true,
+				pageCount,
+				extractionMethod: isScanned ? 'ocr' : 'hybrid'
+			}
+		};
+	}
+
+	return {
+		extracted: true,
+		extracted_text: nativeText,
+		failure_reason: null,
+		metadata: {
+			isScanned: false,
+			pageCount,
+			extractionMethod: 'native'
+		}
+	};
+};

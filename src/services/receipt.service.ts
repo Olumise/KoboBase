@@ -12,8 +12,9 @@ import {
 	UpdateReceiptFileType,
 	UpdateReceiptType,
 } from "../schema/receipt";
-import { googleOCR } from "./ocr.service";
+import { googleOCR, extractPDFText } from "./ocr.service";
 import { detectDocumentType, determineProcessingMode } from "./documentDetection.service";
+import { validateTransactionCount } from "./transactionLimits.service";
 
 export const addReceipt = async (data: AddReceiptType) => {
 	AddReceiptSchema.parse(data);
@@ -43,16 +44,34 @@ export const extractReceiptRawText = async (receiptId: string) => {
 	if (!receipt) {
 		throw new AppError(400, "Receipt not found!", "extractReceiptRawText");
 	}
-	const text: ExtractionResultSchema = await googleOCR(
-		receipt.fileUrl,
-		receipt.fileType
-	);
 
-	if (!text.extracted) {
-		const failureReason = text.failure_reason
-			? text.failure_reason
-			: `Error in AI extracting texts from transaction ${text}`;
-		throw new AppError(500, failureReason, "extractReceiptRawText");
+	let text: ExtractionResultSchema;
+	let extractionMetadata: any = {};
+
+	if (receipt.fileType === 'application/pdf') {
+		const pdfResult = await extractPDFText(receipt.fileUrl);
+		if (!pdfResult.extracted) {
+			throw new AppError(500, pdfResult.failure_reason || "PDF extraction failed", "extractReceiptRawText");
+		}
+		text = {
+			extracted: pdfResult.extracted,
+			extracted_text: pdfResult.extracted_text,
+			failure_reason: pdfResult.failure_reason
+		};
+		if (pdfResult.metadata) {
+			extractionMetadata = {
+				isPDF: true,
+				...pdfResult.metadata
+			};
+		}
+	} else {
+		text = await googleOCR(receipt.fileUrl, receipt.fileType);
+		if (!text.extracted) {
+			const failureReason = text.failure_reason
+				? text.failure_reason
+				: `Error in AI extracting texts from transaction ${text}`;
+			throw new AppError(500, failureReason, "extractReceiptRawText");
+		}
 	}
 
 	let detection = null;
@@ -70,6 +89,28 @@ export const extractReceiptRawText = async (receiptId: string) => {
 		console.error("Document detection failed, falling back to single mode:", error);
 	}
 
+	if (detection && detection.transaction_count) {
+		const validation = validateTransactionCount(detection.transaction_count);
+
+		if (!validation.valid) {
+			const errorMessage = validation.error || "Transaction limit exceeded";
+			await prisma.receipt.update({
+				where: { id: receiptId },
+				data: {
+					processingStatus: "failed",
+					extractionMetadata: {
+						...extractionMetadata,
+						error: errorMessage,
+						detectedCount: detection.transaction_count,
+						systemLimit: validation.limit
+					}
+				}
+			});
+
+			throw new AppError(400, errorMessage, "extractReceiptRawText");
+		}
+	}
+
 	const receiptUpdate = await prisma.receipt.update({
 		where: {
 			id: receiptId,
@@ -81,6 +122,7 @@ export const extractReceiptRawText = async (receiptId: string) => {
 			documentType: detection?.document_type || "single_receipt",
 			expectedTransactions: detection?.transaction_count || 1,
 			detectionCompleted: detection !== null,
+			extractionMetadata: Object.keys(extractionMetadata).length > 0 ? extractionMetadata : undefined,
 		},
 	});
 
