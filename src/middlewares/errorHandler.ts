@@ -31,8 +31,9 @@ export const errorHandler = async (
 		});
 	}
 	if (err instanceof APIError) {
+		const cleanMessage = err.message.replace(/^APIError:\s*/, "");
 		return res.status(err.statusCode).json({
-			message: err.message,
+			message: cleanMessage,
 			url: req.url,
 			type: "Better Auth Error",
 			...(process.env.MODE === "development" && { stack: err.stack }),

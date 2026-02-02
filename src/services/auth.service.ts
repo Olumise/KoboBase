@@ -28,11 +28,11 @@ export const signInUser = async (data: any) => {
 				email,
 				password,
 			},
-			
+
 		});
 		return data
 	} catch (err: any) {
-		throw new Error(err);
+		throw err;
 	}
 };
 
@@ -43,6 +43,6 @@ export const getUser = async (headers: any) => {
 		});
 		return user;
 	} catch (err: any) {
-		throw new Error(err);
+		throw err;
 	}
 };

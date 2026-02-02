@@ -111,7 +111,7 @@ export const DocumentDetectionSchema = z.object({
 			date: z.string().nullable(),
 			description: z.string().nullable()
 		})
-	).max(5).describe("Preview of first few transactions detected (max 5)"),
+	).max(5).describe("Show basic information for all the transaction you got"),
 
 	notes: z.string().describe(
 		"Any important observations about the document structure, quality, or processing recommendations"

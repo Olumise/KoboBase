@@ -1,6 +1,7 @@
 {
 	"devDependencies": {
 		"@tsconfig/node22": "^22.0.5",
+		"@types/cors": "^2.8.19",
 		"@types/express": "^5.0.6",
 		"@types/multer": "^2.0.0",
 		"@types/node": "^25.0.8",
@@ -22,6 +23,7 @@
 		"@prisma/adapter-pg": "^7.2.0",
 		"@prisma/client": "^7.2.0",
 		"better-auth": "^1.4.12",
+		"cors": "^2.8.6",
 		"dotenv": "^17.2.3",
 		"express": "^5.2.1",
 		"langchain": "^1.2.8",

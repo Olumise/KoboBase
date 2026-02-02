@@ -16,10 +16,11 @@ export const getBankAccountsController = async (
 	next: NextFunction
 ) => {
 	try {
-		const { userId, bankName, isActive, currency } = req.query;
+		const userId = req.user.id;
+		const { bankName, isActive, currency } = req.query;
 
 		const result = await getBankAccounts({
-			userId: userId as string,
+			userId,
 			bankName: bankName as string | undefined,
 			isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
 			currency: currency as string | undefined,
@@ -40,7 +41,8 @@ export const createBankAccountController = async (
 	next: NextFunction
 ) => {
 	try {
-		const result = await createBankAccount(req.body);
+		const userId = req.user.id;
+		const result = await createBankAccount({ ...req.body, userId });
 
 		res.status(result.created ? 201 : 200).json({
 			message: result.message,
@@ -57,7 +59,8 @@ export const matchBankAccountController = async (
 	next: NextFunction
 ) => {
 	try {
-		const { userId, bankName, accountNumber } = req.body;
+		const userId = req.user.id;
+		const { bankName, accountNumber } = req.body;
 
 		const account = await matchBankAccount({
 			userId,
@@ -88,7 +91,7 @@ export const getPrimaryBankAccountController = async (
 	next: NextFunction
 ) => {
 	try {
-		const userId = req.params.userId as string;
+		const userId = req.user.id;
 
 		const account = await getPrimaryBankAccount(userId);
 
@@ -115,8 +118,8 @@ export const getBankAccountByIdController = async (
 	next: NextFunction
 ) => {
 	try {
+		const userId = req.user.id;
 		const accountId = req.params.accountId as string;
-		const userId = req.query.userId as string;
 
 		const account = await getBankAccountById(accountId, userId);
 
@@ -135,8 +138,9 @@ export const updateBankAccountController = async (
 	next: NextFunction
 ) => {
 	try {
+		const userId = req.user.id;
 		const accountId = req.params.accountId as string;
-		const { userId, ...updates } = req.body;
+		const updates = req.body;
 
 		const account = await updateBankAccount({
 			accountId,
@@ -159,8 +163,8 @@ export const deleteBankAccountController = async (
 	next: NextFunction
 ) => {
 	try {
+		const userId = req.user.id;
 		const accountId = req.params.accountId as string;
-		const userId = req.query.userId as string;
 
 		const result = await deleteBankAccount(accountId, userId);
 
@@ -176,8 +180,8 @@ export const setPrimaryAccountController = async (
 	next: NextFunction
 ) => {
 	try {
+		const userId = req.user.id;
 		const accountId = req.params.accountId as string;
-		const { userId } = req.body;
 
 		const account = await setPrimaryAccount(accountId, userId);
 

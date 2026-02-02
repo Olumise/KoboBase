@@ -28,7 +28,7 @@ const buildDocumentDetectionPrompt = (customContext?: string): string => {
 
 4. **Document Characteristics**: Analyze the structure and format
 
-5. **Transaction Preview**: Extract basic info (amount, date, description) from the first few transactions
+5. **Transaction Preview**: Extract basic info (amount, date, description) from all the transactions
 
 Important Guidelines:
 - Be conservative with transaction counts - only count clear, distinct transactions

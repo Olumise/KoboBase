@@ -52,6 +52,52 @@ export const initiateBatchTransactionsFromReceipt = async (
 		throw new AppError(400, "Receipt has no extracted text!", "initiateBatchTransactionsFromReceipt");
 	}
 
+	// Check if this receipt has any transactions already created
+	const existingTransactionsCount = await prisma.transaction.count({
+		where: {
+			receiptId,
+			userId,
+		},
+	});
+
+	if (existingTransactionsCount > 0) {
+		console.log(`Found ${existingTransactionsCount} existing transaction(s) for receipt ${receiptId}. Cleaning up...`);
+
+		// Delete all transactions created from this receipt
+		await prisma.transaction.deleteMany({
+			where: {
+				receiptId,
+				userId,
+			},
+		});
+		console.log(`Deleted ${existingTransactionsCount} transaction(s) from receipt ${receiptId}`);
+
+		// Delete all clarification sessions
+		await prisma.clarificationSession.deleteMany({
+			where: {
+				receiptId,
+				userId,
+			},
+		});
+
+		// Delete all batch sessions
+		await prisma.batchSession.deleteMany({
+			where: {
+				receiptId,
+				userId,
+			},
+		});
+
+		// Reset receipt's processed transaction count
+		await prisma.receipt.update({
+			where: { id: receiptId },
+			data: {
+				processedTransactions: 0,
+			},
+		});
+		console.log(`Cleanup complete for receipt ${receiptId}`);
+	}
+
 	const existingSession = await prisma.batchSession.findFirst({
 		where: {
 			receiptId,

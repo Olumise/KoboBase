@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import cors from "cors";
 import { errorHandler } from "./middlewares/errorHandler";
 import aiRouter from "./routes/ai.route";
 import transactionRouter from "./routes/transaction.route";
@@ -13,7 +14,13 @@ import userRouter from "./routes/user.route";
 const app = express();
 const PORT = process.env.PORT;
 
+const corsOptions = {
+	origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
+	credentials: true,
+	optionsSuccessStatus: 200,
+};
 
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use("/ai", aiRouter);

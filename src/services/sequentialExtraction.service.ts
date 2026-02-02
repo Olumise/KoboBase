@@ -21,12 +21,21 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens, estimateTokensForTools } from "../utils/tokenCounter";
 import { trackLLMCall, initializeSession } from "./costTracking.service";
 import { completeClarificationSession } from "./clarification.service";
+import { ProgressCallback } from "../types/progress.types";
 
 export const initiateSequentialProcessing = async (
 	receiptId: string,
 	userId: string,
-	userBankAccountId: string
+	userBankAccountId: string,
+	progressCallback?: ProgressCallback
 ): Promise<BatchTransactionInitiationResponse> => {
+	progressCallback?.({
+		step: 'validating_receipt',
+		message: 'Validating receipt and permissions...',
+		progress: 5,
+		timestamp: new Date(),
+	});
+
 	if (!receiptId) {
 		throw new AppError(
 			400,
@@ -79,6 +88,13 @@ export const initiateSequentialProcessing = async (
 		);
 	}
 
+	progressCallback?.({
+		step: 'fetching_user_data',
+		message: 'Loading user profile and bank account...',
+		progress: 10,
+		timestamp: new Date(),
+	});
+
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
 		select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
@@ -104,6 +120,60 @@ export const initiateSequentialProcessing = async (
 		);
 	}
 
+	progressCallback?.({
+		step: 'checking_session',
+		message: 'Checking for existing processing session...',
+		progress: 15,
+		timestamp: new Date(),
+	});
+
+	// Check if this receipt has any transactions already created
+	const existingTransactionsCount = await prisma.transaction.count({
+		where: {
+			receiptId,
+			userId,
+		},
+	});
+
+	if (existingTransactionsCount > 0) {
+		console.log(`Found ${existingTransactionsCount} existing transaction(s) for receipt ${receiptId}. Cleaning up...`);
+
+		// Delete all transactions created from this receipt
+		await prisma.transaction.deleteMany({
+			where: {
+				receiptId,
+				userId,
+			},
+		});
+		console.log(`Deleted ${existingTransactionsCount} transaction(s) from receipt ${receiptId}`);
+
+		// Delete all clarification sessions
+		await prisma.clarificationSession.deleteMany({
+			where: {
+				receiptId,
+				userId,
+			},
+		});
+
+		// Delete all batch sessions
+		await prisma.batchSession.deleteMany({
+			where: {
+				receiptId,
+				userId,
+			},
+		});
+
+		// Reset receipt's processed transaction count
+		await prisma.receipt.update({
+			where: { id: receiptId },
+			data: {
+				processedTransactions: 0,
+			},
+		});
+		console.log(`Cleanup complete for receipt ${receiptId}`);
+	}
+
+	// Now check for any remaining in_progress batch sessions (from previous failed attempts)
 	let existingBatchSession = await prisma.batchSession.findFirst({
 		where: {
 			receiptId,
@@ -118,6 +188,8 @@ export const initiateSequentialProcessing = async (
 		const hasTransactionResults = extractedData?.transaction_results && extractedData.transaction_results.length > 0;
 
 		if (hasTransactionResults) {
+			// Session has transaction results but no actual transactions were created yet
+			// This means we're resuming an in-progress session
 			const transactionResults = extractedData.transaction_results;
 			const currentIndex = existingBatchSession.currentIndex || 0;
 
@@ -166,6 +238,13 @@ export const initiateSequentialProcessing = async (
 	const toolTokens = estimateTokensForTools(allAITools);
 	const totalInputTokens = baseInputTokens + toolTokens;
 
+	progressCallback?.({
+		step: 'invoking_ai',
+		message: 'Initiating AI extraction...',
+		progress: 25,
+		timestamp: new Date(),
+	});
+
 	console.log("Invoking LLM with sequential tools...");
 	const aiResponse = await llmWithTools.invoke(initialPrompt);
 	console.log("Sequential AI response content:", aiResponse.content);
@@ -173,6 +252,14 @@ export const initiateSequentialProcessing = async (
 		"Sequential tool calls:",
 		JSON.stringify(aiResponse.tool_calls, null, 2)
 	);
+
+	progressCallback?.({
+		step: 'analyzing_transactions',
+		message: 'Analyzing transactions from receipt...',
+		progress: 40,
+		timestamp: new Date(),
+		metadata: { toolCallsCount: aiResponse.tool_calls?.length || 0 },
+	});
 
 	// Extract output tokens
 	const tokenUsage = extractTokenUsageFromResponse(aiResponse);
@@ -199,6 +286,14 @@ export const initiateSequentialProcessing = async (
 		}
 	}
 
+	progressCallback?.({
+		step: 'executing_tools',
+		message: 'Executing AI tools for data enrichment...',
+		progress: 50,
+		timestamp: new Date(),
+		metadata: { autoToolsCount: autoExecuteTools.length },
+	});
+
 	const toolExecutionPromises = autoExecuteTools.map(async (toolCall) => {
 		try {
 			const result = await executeAITool(toolCall.name as any, toolCall.args);
@@ -216,6 +311,13 @@ export const initiateSequentialProcessing = async (
 	});
 
 	console.log("Auto tool results:", JSON.stringify(autoToolResults, null, 2));
+
+	progressCallback?.({
+		step: 'creating_session',
+		message: 'Creating batch processing session...',
+		progress: 60,
+		timestamp: new Date(),
+	});
 
 	let batchSession;
 
@@ -377,6 +479,13 @@ export const initiateSequentialProcessing = async (
 		{ name: "extract_batch_transactions", strict: true }
 	);
 
+	progressCallback?.({
+		step: 'enriching_data',
+		message: 'Enriching transaction data...',
+		progress: 70,
+		timestamp: new Date(),
+	});
+
 	const finalPrompt = [
 		{
 			role: "system",
@@ -399,6 +508,14 @@ export const initiateSequentialProcessing = async (
 		"Sequential extraction response:",
 		JSON.stringify(batchExtractionResponse, null, 2)
 	);
+
+	progressCallback?.({
+		step: 'finalizing_extraction',
+		message: 'Finalizing extraction and preparing transactions...',
+		progress: 85,
+		timestamp: new Date(),
+		metadata: { transactionsFound: batchExtractionResponse.transactions.length },
+	});
 
 	const transactionResults: BatchTransactionInitiationItem[] = [];
 
@@ -475,6 +592,14 @@ export const initiateSequentialProcessing = async (
 				transaction_results: transactionResults,
 			},
 		},
+	});
+
+	progressCallback?.({
+		step: 'complete',
+		message: 'Extraction complete! Ready to review transactions.',
+		progress: 100,
+		timestamp: new Date(),
+		metadata: { totalTransactions },
 	});
 
 	return {

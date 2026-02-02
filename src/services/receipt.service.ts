@@ -89,11 +89,10 @@ export const extractReceiptRawText = async (receiptId: string) => {
 		console.error("Document detection failed, falling back to single mode:", error);
 	}
 
-	if (detection && detection.transaction_count) {
-		const validation = validateTransactionCount(detection.transaction_count);
-
-		if (!validation.valid) {
-			const errorMessage = validation.error || "Transaction limit exceeded";
+	if (detection) {
+		// Check if transaction count is 0 (no valid transactions found)
+		if (detection.transaction_count === 0) {
+			const errorMessage = detection.notes || "No valid transactions found in this document. Please upload a document with clear transaction information.";
 			await prisma.receipt.update({
 				where: { id: receiptId },
 				data: {
@@ -101,13 +100,36 @@ export const extractReceiptRawText = async (receiptId: string) => {
 					extractionMetadata: {
 						...extractionMetadata,
 						error: errorMessage,
-						detectedCount: detection.transaction_count,
-						systemLimit: validation.limit
+						documentType: detection.document_type,
+						detectedCount: 0
 					}
 				}
 			});
 
 			throw new AppError(400, errorMessage, "extractReceiptRawText");
+		}
+
+		// Validate transaction count against limits
+		if (detection.transaction_count) {
+			const validation = validateTransactionCount(detection.transaction_count);
+
+			if (!validation.valid) {
+				const errorMessage = validation.error || "Transaction limit exceeded";
+				await prisma.receipt.update({
+					where: { id: receiptId },
+					data: {
+						processingStatus: "failed",
+						extractionMetadata: {
+							...extractionMetadata,
+							error: errorMessage,
+							detectedCount: detection.transaction_count,
+							systemLimit: validation.limit
+						}
+					}
+				});
+
+				throw new AppError(400, errorMessage, "extractReceiptRawText");
+			}
 		}
 	}
 
@@ -199,4 +221,151 @@ export const updateReceiptFile = async (
 	});
 
 	return updatedReceipt;
+};
+
+export const getUserReceipts = async (userId: string) => {
+	if (!userId) {
+		throw new AppError(400, "User ID is required!", "getUserReceipts");
+	}
+
+	const receipts = await prisma.receipt.findMany({
+		where: {
+			userId: userId,
+		},
+		include: {
+			transactions: {
+				include: {
+					category: true,
+					contact: true,
+					userBankAccount: true,
+					toBankAccount: true,
+				},
+				orderBy: {
+					transactionDate: 'desc',
+				},
+			},
+			batchSessions: {
+				orderBy: {
+					createdAt: 'desc',
+				},
+			},
+		},
+		orderBy: {
+			uploadedAt: 'desc',
+		},
+	});
+
+	return receipts;
+};
+
+export const getReceiptById = async (receiptId: string, userId: string) => {
+	if (!receiptId) {
+		throw new AppError(400, "Receipt ID is required!", "getReceiptById");
+	}
+
+	if (!userId) {
+		throw new AppError(400, "User ID is required!", "getReceiptById");
+	}
+
+	const receipt = await prisma.receipt.findUnique({
+		where: {
+			id: receiptId,
+		},
+		include: {
+			transactions: {
+				include: {
+					category: true,
+					contact: true,
+					userBankAccount: true,
+					toBankAccount: true,
+				},
+				orderBy: {
+					transactionDate: 'desc',
+				},
+			},
+			batchSessions: {
+				orderBy: {
+					createdAt: 'desc',
+				},
+			},
+		},
+	});
+
+	if (!receipt) {
+		throw new AppError(404, "Receipt not found!", "getReceiptById");
+	}
+
+	if (receipt.userId !== userId) {
+		throw new AppError(403, "Unauthorized access to this receipt!", "getReceiptById");
+	}
+
+	// Check if receipt has failed processing due to zero transactions
+	if (receipt.processingStatus === "failed" && receipt.extractionMetadata) {
+		const metadata = receipt.extractionMetadata as any;
+		if (metadata.error && metadata.detectedCount === 0) {
+			throw new AppError(400, metadata.error, "getReceiptById");
+		}
+	}
+
+	return receipt;
+};
+
+export const deleteReceipt = async (receiptId: string, userId: string) => {
+	if (!receiptId) {
+		throw new AppError(400, "Receipt ID is required!", "deleteReceipt");
+	}
+
+	if (!userId) {
+		throw new AppError(400, "User ID is required!", "deleteReceipt");
+	}
+
+	const receipt = await prisma.receipt.findUnique({
+		where: {
+			id: receiptId,
+		},
+		include: {
+			transactions: true,
+			batchSessions: true,
+		},
+	});
+
+	if (!receipt) {
+		throw new AppError(404, "Receipt not found!", "deleteReceipt");
+	}
+
+	if (receipt.userId !== userId) {
+		throw new AppError(403, "Unauthorized access to this receipt!", "deleteReceipt");
+	}
+
+	// Delete related records first (cascade delete)
+	// Delete transactions associated with this receipt
+	if (receipt.transactions.length > 0) {
+		await prisma.transaction.deleteMany({
+			where: {
+				receiptId: receiptId,
+			},
+		});
+	}
+
+	// Delete batch sessions associated with this receipt
+	if (receipt.batchSessions.length > 0) {
+		await prisma.batchSession.deleteMany({
+			where: {
+				receiptId: receiptId,
+			},
+		});
+	}
+
+	// Delete the receipt
+	await prisma.receipt.delete({
+		where: {
+			id: receiptId,
+		},
+	});
+
+	return {
+		success: true,
+		message: "Receipt deleted successfully",
+		deletedReceiptId: receiptId,
+	};
 };

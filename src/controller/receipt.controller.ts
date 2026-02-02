@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../middlewares/errorHandler";
-import { addReceipt, extractReceiptRawText, updateReceiptFile } from "../services/receipt.service";
+import { addReceipt, extractReceiptRawText, updateReceiptFile, getUserReceipts, getReceiptById, deleteReceipt } from "../services/receipt.service";
 import { AddReceiptType, UpdateReceiptFileType } from "../schema/receipt";
 import { uploadFile } from "../services/upload";
 import { prisma } from "../lib/prisma";
@@ -130,6 +130,68 @@ export const getBatchSessionController = async (
 			hasBatchSession: true,
 			batchSession: batchSession
 		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getUserReceiptsController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user.id;
+
+	try {
+		const receipts = await getUserReceipts(userId);
+		res.send({
+			success: true,
+			count: receipts.length,
+			receipts: receipts
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getReceiptByIdController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const { receiptId } = req.params;
+	const userId = req.user.id;
+
+	try {
+		if (!receiptId || typeof receiptId !== 'string') {
+			throw new AppError(400, "Receipt ID is required", "getReceiptByIdController");
+		}
+
+		const receipt = await getReceiptById(receiptId, userId);
+		res.send({
+			success: true,
+			receipt: receipt
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const deleteReceiptController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const { receiptId } = req.params;
+	const userId = req.user.id;
+
+	try {
+		if (!receiptId || typeof receiptId !== 'string') {
+			throw new AppError(400, "Receipt ID is required", "deleteReceiptController");
+		}
+
+		const result = await deleteReceipt(receiptId, userId);
+		res.send(result);
 	} catch (err) {
 		next(err);
 	}
