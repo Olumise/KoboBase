@@ -16,7 +16,7 @@ const bankAccountRouter = express();
 bankAccountRouter.get("/", authVerify, getBankAccountsController);
 bankAccountRouter.post("/", authVerify, createBankAccountController);
 bankAccountRouter.post("/match", authVerify, matchBankAccountController);
-bankAccountRouter.get("/primary/:userId", authVerify, getPrimaryBankAccountController);
+bankAccountRouter.get("/primary", authVerify, getPrimaryBankAccountController);
 bankAccountRouter.get("/:accountId", authVerify, getBankAccountByIdController);
 bankAccountRouter.put("/:accountId", authVerify, updateBankAccountController);
 bankAccountRouter.delete("/:accountId", authVerify, deleteBankAccountController);

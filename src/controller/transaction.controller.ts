@@ -18,6 +18,8 @@ import {
 	approveSequentialTransaction,
 	skipSequentialTransaction,
 	completeSequentialSession,
+	getBatchSessionInfo,
+	goToTransactionByIndex,
 } from "../services/sequentialExtraction.service";
 
 export const generateTransactionController = async (
@@ -545,6 +547,67 @@ export const completeSequentialSessionController = async (
 		res.status(200).json({
 			message: "Sequential session completed successfully",
 			data: result
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getBatchSessionInfoController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const batchSessionId = req.params.batchSessionId as string;
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "getBatchSessionInfoController");
+	}
+
+	if (!batchSessionId || typeof batchSessionId !== 'string') {
+		throw new AppError(400, "Batch session ID is required", "getBatchSessionInfoController");
+	}
+
+	try {
+		const batchInfo = await getBatchSessionInfo(batchSessionId, userId);
+
+		res.status(200).json({
+			message: "Batch session information retrieved successfully",
+			data: batchInfo
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const goToTransactionByIndexController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	const userId = req.user?.id;
+	const batchSessionId = req.params.batchSessionId as string;
+	const targetIndex = parseInt(req.params.index as string);
+
+	if (!userId) {
+		throw new AppError(401, "Unauthorized!", "goToTransactionByIndexController");
+	}
+
+	if (!batchSessionId || typeof batchSessionId !== 'string') {
+		throw new AppError(400, "Batch session ID is required", "goToTransactionByIndexController");
+	}
+
+	if (isNaN(targetIndex)) {
+		throw new AppError(400, "Valid transaction index is required", "goToTransactionByIndexController");
+	}
+
+	try {
+		const result = await goToTransactionByIndex(batchSessionId, userId, targetIndex);
+
+		res.status(200).json({
+			message: "Transaction retrieved successfully",
+			data: result,
 		});
 	} catch (err) {
 		next(err);

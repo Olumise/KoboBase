@@ -179,8 +179,6 @@ model Contact {
   typicalAmountRangeMin Decimal?  @map("typical_amount_range_min") @db.Decimal(15, 2)
   typicalAmountRangeMax Decimal?  @map("typical_amount_range_max") @db.Decimal(15, 2)
   nameVariations        String[]  @map("name_variations")
-  transactionCount      Int       @default(0) @map("transaction_count")
-  lastTransactionDate   DateTime? @map("last_transaction_date") @db.Date
   notes                 String?   @db.Text
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")

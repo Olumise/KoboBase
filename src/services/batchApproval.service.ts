@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../middlewares/errorHandler";
 import { generateEmbedding } from "./embedding.service";
 import { BatchTransactionExtraction } from "../schema/ai-formats";
+import { ensureTransactionReference } from "../utils/transactionReferenceGenerator";
 
 interface TransactionEdit {
 	categoryId?: string;
@@ -93,6 +94,9 @@ export const approveBatchTransactions = async (
 				continue;
 			}
 
+			// Ensure transaction reference exists or generate one
+			const finalReferenceNumber = ensureTransactionReference(txData.transaction_reference);
+
 			const transaction = await prisma.transaction.create({
 				data: {
 					userId: userId,
@@ -108,7 +112,7 @@ export const approveBatchTransactions = async (
 					isSelfTransaction: enrichment?.is_self_transaction || false,
 					description: edits?.description || txData.description || undefined,
 					paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
-					referenceNumber: txData.transaction_reference || undefined,
+					referenceNumber: finalReferenceNumber,
 					aiConfidence: transactionItem.confidence_score,
 					status: "confirmed",
 				},

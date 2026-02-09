@@ -17,7 +17,8 @@ export const findCategoryController = async (
 	next: NextFunction
 ) => {
 	try {
-		const { categoryName, userId } = req.body;
+		const { categoryName } = req.body;
+		const userId = req.user.id;
 
 		const category = await findCategory({
 			categoryName,
@@ -47,7 +48,8 @@ export const createCategoryController = async (
 	next: NextFunction
 ) => {
 	try {
-		const category = await createCategory(req.body);
+		const userId = req.user.id;
+		const category = await createCategory({ ...req.body, userId });
 
 		res.status(201).json({
 			message: "Category created successfully",
@@ -64,7 +66,7 @@ export const getUserCategoriesController = async (
 	next: NextFunction
 ) => {
 	try {
-		const userId = req.params.userId as string;
+		const userId = req.user.id;
 
 		const result = await getUserCategories(userId);
 
@@ -117,7 +119,7 @@ export const getUserCreatedCategoriesController = async (
 	next: NextFunction
 ) => {
 	try {
-		const userId = req.params.userId as string;
+		const userId = req.user.id;
 
 		const result = await getUserCreatedCategories(userId);
 
@@ -137,7 +139,7 @@ export const getCategoryByIdController = async (
 ) => {
 	try {
 		const categoryId = req.params.categoryId as string;
-		const userId = req.query.userId as string;
+		const userId = req.user.id;
 
 		const category = await getCategoryById(categoryId, userId);
 
@@ -157,7 +159,8 @@ export const updateCategoryController = async (
 ) => {
 	try {
 		const categoryId = req.params.categoryId as string;
-		const { userId, ...updates } = req.body;
+		const userId = req.user.id;
+		const updates = req.body;
 
 		const category = await updateCategory({
 			categoryId,
@@ -181,7 +184,7 @@ export const deleteCategoryController = async (
 ) => {
 	try {
 		const categoryId = req.params.categoryId as string;
-		const userId = req.query.userId as string;
+		const userId = req.user.id;
 
 		const result = await deleteCategory(categoryId, userId);
 

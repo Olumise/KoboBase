@@ -15,6 +15,7 @@ import {
 	generateConfirmationQuestion,
 } from "../config/toolConfirmations";
 import { buildExtractionPrompt } from "../lib/prompts";
+import { convertFieldsToQuestions } from "../utils/questionFormatter";
 import { generateEmbedding } from "./embedding.service";
 import * as z from "zod";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
@@ -1080,5 +1081,207 @@ export const completeSequentialSession = async (
 		totalProcessed,
 		totalSkipped,
 		completedAt,
+	};
+};
+
+export const goToTransactionByIndex = async (
+	batchSessionId: string,
+	userId: string,
+	targetIndex: number
+): Promise<{
+	currentTransaction: BatchTransactionInitiationItem | null;
+	currentIndex: number;
+	totalTransactions: number;
+	previousIndex: number;
+	batchSessionId: string;
+}> => {
+	// 1. Fetch and validate batch session
+	const batchSession = await prisma.batchSession.findUnique({
+		where: { id: batchSessionId },
+		include: { receipt: true },
+	});
+
+	if (!batchSession) {
+		throw new AppError(404, "Batch session not found", "goToTransactionByIndex");
+	}
+
+	if (batchSession.userId !== userId) {
+		throw new AppError(403, "Unauthorized access to batch session", "goToTransactionByIndex");
+	}
+
+	if (batchSession.processingMode !== "sequential") {
+		throw new AppError(400, "This is not a sequential processing session", "goToTransactionByIndex");
+	}
+
+	// 2. Extract transaction results and validate index
+	const extractedData = batchSession.extractedData as any;
+	const transactionResults = extractedData?.transaction_results || [];
+	const previousIndex = batchSession.currentIndex || 0;
+
+	if (targetIndex < 0 || targetIndex >= transactionResults.length) {
+		throw new AppError(
+			400,
+			`Invalid transaction index. Must be between 0 and ${transactionResults.length - 1}`,
+			"goToTransactionByIndex"
+		);
+	}
+
+	// 3. Close clarification session of current transaction (if exists)
+	const currentTransactionItem = transactionResults[previousIndex];
+	if (currentTransactionItem?.clarification_session_id) {
+		try {
+			await completeClarificationSession(
+				currentTransactionItem.clarification_session_id,
+				userId
+			);
+		} catch (clarificationError) {
+			console.error("Failed to complete clarification session:", clarificationError);
+		}
+	}
+
+	// 4. Check if target transaction needs clarification
+	const targetTransactionItem = transactionResults[targetIndex];
+	let clarificationSessionId = targetTransactionItem?.clarification_session_id || null;
+
+	if (
+		targetTransactionItem?.needs_clarification &&
+		!clarificationSessionId &&
+		targetTransactionItem.questions &&
+		targetTransactionItem.questions.length > 0
+	) {
+		// Create new clarification session for target transaction
+		const newClarificationSession = await prisma.clarificationSession.create({
+			data: {
+				receiptId: batchSession.receiptId,
+				userId,
+				status: "active",
+				extractedData: {
+					transaction: targetTransactionItem.transaction,
+					missing_fields: targetTransactionItem.missing_fields || [],
+					questions: targetTransactionItem.questions,
+				},
+			},
+		});
+
+		clarificationSessionId = newClarificationSession.id;
+		transactionResults[targetIndex] = {
+			...targetTransactionItem,
+			clarification_session_id: clarificationSessionId,
+		};
+	}
+
+	// 5. Update batch session with new currentIndex
+	await prisma.batchSession.update({
+		where: { id: batchSessionId },
+		data: {
+			currentIndex: targetIndex,
+			status: "in_progress", // Ensure session is not marked complete
+			extractedData: {
+				...extractedData,
+				transaction_results: transactionResults,
+			},
+		},
+	});
+
+	// 6. Return transaction at target index
+	return {
+		currentTransaction: transactionResults[targetIndex],
+		currentIndex: targetIndex,
+		totalTransactions: transactionResults.length,
+		previousIndex,
+		batchSessionId: batchSession.id,
+	};
+};
+
+export const getBatchSessionInfo = async (
+	batchSessionId: string,
+	userId: string
+): Promise<{
+	id: string;
+	receiptId: string;
+	userId: string;
+	totalExpected: number;
+	totalProcessed: number;
+	currentIndex: number;
+	status: string;
+	processingMode: string;
+	extractedData: any;
+	startedAt: Date;
+	completedAt: Date | null;
+	receipt?: {
+		id: string;
+		fileUrl: string;
+		fileType: string;
+		uploadedAt: Date;
+	};
+	llmUsage?: {
+		totalInputTokens: number;
+		totalOutputTokens: number;
+		totalTokens: number;
+		totalCostUsd: number;
+	};
+}> => {
+	const batchSession = await prisma.batchSession.findUnique({
+		where: { id: batchSessionId },
+		include: {
+			receipt: {
+				select: {
+					id: true,
+					fileUrl: true,
+					fileType: true,
+					uploadedAt: true,
+				},
+			},
+			llmUsage: {
+				select: {
+					totalInputTokens: true,
+					totalOutputTokens: true,
+					totalTokens: true,
+					totalCostUsd: true,
+				},
+			},
+		},
+	});
+
+	if (!batchSession) {
+		throw new AppError(
+			404,
+			"Batch session not found",
+			"getBatchSessionInfo"
+		);
+	}
+
+	if (batchSession.userId !== userId) {
+		throw new AppError(
+			403,
+			"Unauthorized access to batch session",
+			"getBatchSessionInfo"
+		);
+	}
+
+	return {
+		id: batchSession.id,
+		receiptId: batchSession.receiptId,
+		userId: batchSession.userId,
+		totalExpected: batchSession.totalExpected,
+		totalProcessed: batchSession.totalProcessed,
+		currentIndex: batchSession.currentIndex,
+		status: batchSession.status,
+		processingMode: batchSession.processingMode,
+		extractedData: batchSession.extractedData,
+		startedAt: batchSession.startedAt,
+		completedAt: batchSession.completedAt,
+		receipt: batchSession.receipt ? {
+			id: batchSession.receipt.id,
+			fileUrl: batchSession.receipt.fileUrl,
+			fileType: batchSession.receipt.fileType,
+			uploadedAt: batchSession.receipt.uploadedAt,
+		} : undefined,
+		llmUsage: batchSession.llmUsage ? {
+			totalInputTokens: batchSession.llmUsage.totalInputTokens,
+			totalOutputTokens: batchSession.llmUsage.totalOutputTokens,
+			totalTokens: batchSession.llmUsage.totalTokens,
+			totalCostUsd: Number(batchSession.llmUsage.totalCostUsd),
+		} : undefined,
 	};
 };

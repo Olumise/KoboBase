@@ -33,6 +33,10 @@ export function shouldRequireConfirmation(
 	return rule.requiresConfirmation === true;
 }
 
+/**
+ * Generates a conversational confirmation question for tool calls
+ * These messages are user-facing and should be clear and friendly
+ */
 export function generateConfirmationQuestion(
 	toolName: string,
 	args: Record<string, any>,
@@ -40,20 +44,21 @@ export function generateConfirmationQuestion(
 ): string {
 	switch (toolName) {
 		case "create_bank_account":
-			return `I found a new bank account "${args.bankName} - ${args.accountNumber}". Should I add this to your accounts?`;
+			return `I noticed a new bank account: "${args.bankName}" (${args.accountNumber}). Would you like me to add this to your accounts for future tracking?`;
 
 		case "create_category":
 			if (result?.created) {
-				return `I want to create a new category "${args.categoryName}". Should I create this category?`;
+				return `I'd like to create a new category called "${args.categoryName}" for this transaction. Does that sound good?`;
 			}
 			break;
 
 		case "get_or_create_contact":
 			if (result?.created) {
-				return `I found a new contact "${args.contactName}". Should I save this contact?`;
+				return `I found a new contact: "${args.contactName}". Should I save them to your contacts so we can track future transactions together?`;
 			}
 			break;
 	}
 
-	return `Confirm action: ${toolName}`;
+	// Generic fallback (should rarely be used)
+	return `I'd like to perform this action: ${toolName}. Is that okay?`;
 }

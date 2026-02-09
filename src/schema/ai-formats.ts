@@ -1,5 +1,15 @@
 import * as z from "zod";
 
+// Structured Question Schema for clearer user interactions
+export const StructuredQuestionSchema = z.object({
+	field: z.string().describe("The field name this question is about"),
+	question: z.string().describe("The question to ask the user"),
+	suggestions: z.array(z.string()).describe("Suggested values or options (empty array if none)"),
+	hint: z.string().describe("Helpful hint or context for the user (empty string if none)"),
+});
+
+export type StructuredQuestion = z.infer<typeof StructuredQuestionSchema>;
+
 export const TransactionReceiptSchema = z.object({
 	transaction_type: z.string(),
 	amount: z.number(),
@@ -39,10 +49,10 @@ export const TransactionReceiptAiResponseSchema = z.object({
 		"The transaction data if complete, or null if missing fields"
 	),
 	questions: z
-		.array(z.string())
+		.array(StructuredQuestionSchema)
 		.nullable()
 		.describe(
-			"Questions to clarify missing fields or fields that is unclear, null if complete"
+			"Structured questions to clarify missing fields or unclear information. Each question should include the field name, a clear conversational question, suggestions (if applicable), and helpful hints. Null if complete."
 		),
 	missing_fields: z
 		.array(z.string())
@@ -111,7 +121,7 @@ export const DocumentDetectionSchema = z.object({
 			date: z.string().nullable(),
 			description: z.string().nullable()
 		})
-	).max(5).describe("Show basic information for all the transaction you got"),
+	).describe("Show basic information for all the transactions you spotted"),
 
 	notes: z.string().describe(
 		"Any important observations about the document structure, quality, or processing recommendations"
@@ -145,7 +155,7 @@ export const BatchTransactionInitiationItemSchema = z.object({
 	confidence_score: z.number().min(0).max(1),
 	transaction: TransactionReceiptSchema.nullable().describe("The transaction data if complete, or null if missing fields"),
 	missing_fields: z.array(z.string()).nullable().describe("List of fields that are missing or need clarification, null if complete"),
-	questions: z.array(z.string()).nullable().describe("Questions to clarify missing fields, null if complete"),
+	questions: z.array(StructuredQuestionSchema).nullable().describe("Structured questions to clarify missing fields. Include field name, conversational question, suggestions, and helpful hints. Null if complete"),
 	enrichment_data: EnrichmentDataSchema.nullable(),
 	notes: z.string().describe("Any additional context, observations, assumptions, or important details"),
 	needs_clarification: z.boolean().describe("Whether this specific transaction needs user clarification"),

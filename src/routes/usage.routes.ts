@@ -6,13 +6,14 @@ import {
 	getAllUsersUsage,
 	getSystemUsageStats,
 } from "../controllers/usage.controller";
+import { authVerify } from "../middlewares/authVerify";
 
 const router = Router();
 
-router.get("/me", getMyUsage);
-router.get("/me/sessions", getMyUsageSessions);
-router.get("/me/breakdown", getMyUsageBreakdown);
-router.get("/admin/users", getAllUsersUsage);
-router.get("/admin/stats", getSystemUsageStats);
+router.get("/me", authVerify, getMyUsage);
+router.get("/me/sessions", authVerify, getMyUsageSessions);
+router.get("/me/breakdown", authVerify, getMyUsageBreakdown);
+router.get("/admin/users", authVerify, getAllUsersUsage);
+router.get("/admin/stats", authVerify, getSystemUsageStats);
 
 export default router;

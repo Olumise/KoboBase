@@ -5,7 +5,6 @@ import {
 	searchContacts,
 	getContactById,
 	updateContact,
-	incrementTransactionCount,
 	getAllContacts,
 } from "../services/contact.service";
 
@@ -117,28 +116,6 @@ export const updateContactController = async (
 	}
 };
 
-export const incrementTransactionCountController = async (
-	req: Request,
-	res: Response,
-	next: NextFunction
-) => {
-	try {
-		const contactId = req.params.contactId as string;
-		const { transactionDate } = req.body;
-
-		const contact = await incrementTransactionCount({
-			contactId,
-			transactionDate: new Date(transactionDate),
-		});
-
-		res.status(200).json({
-			message: "Transaction count incremented successfully",
-			data: contact,
-		});
-	} catch (err) {
-		next(err);
-	}
-};
 
 export const getAllContactsController = async (
 	req: Request,

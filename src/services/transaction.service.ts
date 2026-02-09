@@ -16,6 +16,7 @@ import {
 import { executeAITool } from "./aiToolExecutor.service";
 import { OpenAIllmGPT4Turbo as OpenAIllm, OpenAIllmCreative } from "../models/llm.models";
 import { generateEmbedding } from "./embedding.service";
+import { ensureTransactionReference } from "../utils/transactionReferenceGenerator";
 
 export const generateTransaction = async (
 	input: string,
@@ -579,6 +580,9 @@ export const createTransaction = async (data: {
 		}
 	}
 
+	// Ensure transaction reference exists or generate one
+	const finalReferenceNumber = ensureTransactionReference(referenceNumber);
+
 	const transaction = await prisma.transaction.create({
 		data: {
 			userId,
@@ -595,7 +599,7 @@ export const createTransaction = async (data: {
 			subcategory,
 			description,
 			paymentMethod,
-			referenceNumber,
+			referenceNumber: finalReferenceNumber,
 			aiConfidence,
 			status,
 		},

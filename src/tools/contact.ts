@@ -47,6 +47,16 @@ export const getOrCreateContactTool = tool(
 			});
 
 			if (exactMatch) {
+				const transactionCount = await prisma.transaction.count({
+					where: { contactId: exactMatch.id },
+				});
+
+				const lastTransaction = await prisma.transaction.findFirst({
+					where: { contactId: exactMatch.id },
+					orderBy: { transactionDate: 'desc' },
+					select: { transactionDate: true },
+				});
+
 				return JSON.stringify({
 					id: exactMatch.id,
 					name: exactMatch.name,
@@ -54,8 +64,8 @@ export const getOrCreateContactTool = tool(
 					contactType: exactMatch.ContactType,
 					categoryId: exactMatch.categoryId,
 					nameVariations: exactMatch.nameVariations,
-					transactionCount: exactMatch.transactionCount,
-					lastTransactionDate: exactMatch.lastTransactionDate?.toISOString() || null,
+					transactionCount,
+					lastTransactionDate: lastTransaction?.transactionDate?.toISOString() || null,
 					created: false,
 					matchConfidence: 1.0,
 					matchedVariation: null,
@@ -101,6 +111,16 @@ export const getOrCreateContactTool = tool(
 			}
 
 			if (bestMatch) {
+				const transactionCount = await prisma.transaction.count({
+					where: { contactId: bestMatch.id },
+				});
+
+				const lastTransaction = await prisma.transaction.findFirst({
+					where: { contactId: bestMatch.id },
+					orderBy: { transactionDate: 'desc' },
+					select: { transactionDate: true },
+				});
+
 				return JSON.stringify({
 					id: bestMatch.id,
 					name: bestMatch.name,
@@ -108,8 +128,8 @@ export const getOrCreateContactTool = tool(
 					contactType: bestMatch.ContactType,
 					categoryId: bestMatch.categoryId,
 					nameVariations: bestMatch.nameVariations,
-					transactionCount: bestMatch.transactionCount,
-					lastTransactionDate: bestMatch.lastTransactionDate?.toISOString() || null,
+					transactionCount,
+					lastTransactionDate: lastTransaction?.transactionDate?.toISOString() || null,
 					created: false,
 					matchConfidence: bestScore,
 					matchedVariation: null,
@@ -123,7 +143,6 @@ export const getOrCreateContactTool = tool(
 					ContactType: contactType || null,
 					categoryId: categoryId || null,
 					nameVariations: [],
-					transactionCount: 0,
 				},
 			});
 
@@ -134,7 +153,7 @@ export const getOrCreateContactTool = tool(
 				contactType: newContact.ContactType,
 				categoryId: newContact.categoryId,
 				nameVariations: newContact.nameVariations,
-				transactionCount: newContact.transactionCount,
+				transactionCount: 0,
 				lastTransactionDate: null,
 				created: true,
 				matchConfidence: 0,

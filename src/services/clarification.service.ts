@@ -478,12 +478,17 @@ export const sendClarificationMessage = async (
 			generateConfirmationQuestion(tc.name, tc.args)
 		);
 
+		// Create a conversational default message based on the number of confirmations needed
+		const defaultMessage = confirmationTools.length === 1
+			? "I found something new in this receipt - just need your quick approval!"
+			: `I found ${confirmationTools.length} new items in this receipt. Mind confirming these for me?`;
+
 		await prisma.clarificationMessage.create({
 			data: {
 				sessionId: session.id,
 				role: "assistant",
 				messageText: JSON.stringify({
-					message: aiResponseWithTools.content || "I need your confirmation for some actions.",
+					message: aiResponseWithTools.content || defaultMessage,
 					questions,
 					pendingActions: confirmationTools.length,
 					toolCalls: confirmationTools,

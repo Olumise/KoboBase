@@ -1,13 +1,16 @@
 import express from "express";
 import { authVerify } from "../middlewares/authVerify";
 import {
-	updateUserSettingsController,
-	getUserSettingsController,
+	getUserProfileController,
+	updateUserProfileController,
+	changePasswordController,
 } from "../controller/user.controller";
 
 const userRouter = express();
 
-userRouter.get("/:userId/settings", authVerify, getUserSettingsController);
-userRouter.patch("/settings", authVerify, updateUserSettingsController);
+
+userRouter.get("/profile", authVerify, getUserProfileController);
+userRouter.patch("/profile", authVerify, updateUserProfileController);
+userRouter.post("/change-password", authVerify, changePasswordController);
 
 export default userRouter;

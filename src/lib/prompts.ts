@@ -17,7 +17,7 @@ const CORE_FIELD_RULES = `You are a transaction data validator and extractor. Ex
 | transaction_type | enum | Lowercase: income/expense/transfer/refund/fee/adjustment | Must match exactly |
 | currency | string | {defaultCurrency} if not specified | Use default |
 | transaction_direction | enum | inbound/outbound/unknown | Based on flow |
-| payment_method | enum | Lowercase: cash/transfer/card | Ask if unclear |
+| payment_method | enum | Lowercase: cash/transfer/card/other | Ask if unclear |
 | description | string | Min 3 chars, meaningful context | See DESCRIPTION VALIDATION below |
 | category | string | WHAT purchased (Food, Electronics, NOT type) | Use get_category tool |
 | sender_name | string | Originating party | Required field |
@@ -27,7 +27,7 @@ const CORE_FIELD_RULES = `You are a transaction data validator and extractor. Ex
 | receiver_account_number | string | Destination account | Required field |
 | time_sent | string | ISO 8601 format | Parse from OCR |
 | status | enum | successful/pending/failed | Based on receipt | Treat all receipts as successful, except the user specifies its not or you see it in the receipt that it is not.
-| transaction_reference | string | Unique transaction ID | From receipt |
+| transaction_reference | string | Unique transaction ID | From receipt, or "MISSING" to auto-generate |
 | raw_input | string | Original OCR text | Preserve exactly |
 | summary | string | Detailed summary (see SUMMARY VALIDATION below) | Must be comprehensive |
 
@@ -45,7 +45,14 @@ const CORE_FIELD_RULES = `You are a transaction data validator and extractor. Ex
   "confidence_score": number,
   "transaction": TransactionReceiptSchema | null,
   "missing_fields": string[] | null,
-  "questions": string[] | null,
+  "questions": [
+    {
+      "field": "field_name",
+      "question": "Clear, conversational question?",
+      "suggestions": ["option1", "option2"],  // optional
+      "hint": "Helpful context or tip"  // optional
+    }
+  ] | null,
   "notes": string
 }
 \`\`\`
@@ -79,7 +86,13 @@ Description must answer "What was this payment for?" Min 3 chars, meaningful con
 **Invalid**: Generic words (payment, transfer, stuff), too short (p, tx), doesn't explain what was purchased
 **Valid**: "Bought earpiece from electronics store"
 
-If invalid → mark in missing_fields, ask: "Please provide clear description (e.g., 'Purchased groceries', 'Netflix subscription')"`;
+If invalid → mark in missing_fields, ask with structured question:
+{
+  "field": "description",
+  "question": "Could you describe what this transaction was for?",
+  "suggestions": [],
+  "hint": "A brief note like 'Groceries at Safeway' or 'Uber ride home' works great"
+}`;
 
 const SUMMARY_VALIDATION = `## SUMMARY VALIDATION
 
@@ -93,7 +106,91 @@ If vague → mark as missing.`;
 
 const TRANSACTION_TYPE_EDGE_CASES = `## Transaction Type Edge Cases
 
-**Payment Method**: Only set if clearly identifiable (POS = card, Bank Transfer = transfer). If missing/unclear → mark in missing_fields, ask: "What payment method was used? (cash/transfer/card)"`;
+**Payment Method**: Only set if clearly identifiable (POS = card, Bank Transfer = transfer). If missing/unclear → mark in missing_fields, ask with structured question:
+{
+  "field": "payment_method",
+  "question": "How was this payment made?",
+  "suggestions": ["cash", "transfer", "card", "other"],
+  "hint": "This helps us categorize and track your spending patterns"
+}
+
+**Transaction Reference**: If not found on receipt → set to "MISSING" (system will auto-generate). Do NOT ask user for transaction reference - we handle this automatically.`;
+
+const QUESTION_FORMATTING_RULES = `## QUESTION FORMATTING RULES
+
+ALL questions MUST be structured objects, not plain strings. Use this format:
+
+{
+  "field": "field_name",           // The exact field name being asked about
+  "question": "Clear question?",   // Conversational, specific question
+  "suggestions": ["opt1", "opt2"], // Array of valid options (optional but recommended)
+  "hint": "Helpful context"        // User-friendly guidance (optional but recommended)
+}
+
+**Examples of well-formatted questions:**
+
+1. Transaction Type Question:
+{
+  "field": "transaction_type",
+  "question": "What type of transaction is this?",
+  "suggestions": ["income", "expense", "transfer", "refund", "fee", "adjustment"],
+  "hint": "Choose the option that best describes this transaction"
+}
+
+2. Payment Method Question:
+{
+  "field": "payment_method",
+  "question": "How was this payment made?",
+  "suggestions": ["cash", "transfer", "card"],
+  "hint": "This helps us categorize and track your spending patterns"
+}
+
+3. Transaction Reference - AUTO-GENERATED (DO NOT ASK):
+**NEVER ask for transaction_reference - if missing from receipt, set to "MISSING" and system will auto-generate**
+
+3. Date Question:
+{
+  "field": "date",
+  "question": "When did this transaction occur?",
+  "suggestions": [],
+  "hint": "You can use formats like 'Jan 15 2026', '2026-01-15', or 'yesterday'"
+}
+
+4. Amount Question:
+{
+  "field": "amount",
+  "question": "What was the transaction amount?",
+  "suggestions": [],
+  "hint": "Please enter the number without currency symbols"
+}
+
+**Question Writing Guidelines:**
+- Be conversational and friendly (use "you", "your", "we")
+- Specify expected values in suggestions when applicable
+- Include helpful hints that guide the user
+- For fields that can be auto-created, mention it in the hint
+- Make it clear what format is expected (for dates, amounts, etc.)`;
+
+const NOTES_FIELD_GUIDELINES = `## NOTES FIELD GUIDELINES
+
+The notes field should be conversational and helpful. Use it to:
+- Explain what you found and what's missing
+- Point out observations or patterns
+- Confirm assumptions you've made
+- Offer helpful context or assistance
+- Be empathetic about unclear information
+
+**Good Examples:**
+- "I was able to extract most details from your receipt. Just need to confirm the transaction type and we'll be all set! This looks like it might be a grocery expense based on the merchant name."
+- "The receipt image quality made it a bit tricky to read the exact amount. I want to make sure we get it right, so I'm asking you to confirm."
+- "I noticed this is from Starbucks - would you like me to automatically categorize similar purchases as 'Dining' in the future?"
+- "This appears to be a transfer to another account. Let me know if this is your own account (transfer) or a payment to someone else (expense)."
+
+**Avoid:**
+- Generic messages like "Some fields are missing"
+- Technical jargon or field names
+- Being too formal or robotic
+- Listing field names without context`;
 
 const CUSTOM_USER_CONTEXT = `## Custom User Instructions
 
@@ -196,6 +293,8 @@ export function buildExtractionPrompt(options: PromptBuildOptions): string {
 	prompt += `\n\n${DESCRIPTION_VALIDATION}`;
 	prompt += `\n\n${SUMMARY_VALIDATION}`;
 	prompt += `\n\n${TRANSACTION_TYPE_EDGE_CASES}`;
+	prompt += `\n\n${QUESTION_FORMATTING_RULES}`;
+	prompt += `\n\n${NOTES_FIELD_GUIDELINES}`;
 
 	// Add custom user context if provided
 	if (options.customContext && options.customContext.trim()) {
@@ -221,7 +320,14 @@ export function buildExtractionPrompt(options: PromptBuildOptions): string {
   "confidence_score": number,
   "transaction": TransactionReceiptSchema | null,
   "missing_fields": string[] | null,
-  "questions": string[] | null,
+  "questions": [
+    {
+      "field": "field_name",
+      "question": "Clear, conversational question?",
+      "suggestions": ["option1", "option2"],
+      "hint": "Helpful context"
+    }
+  ] | null,
   "enrichment_data": {
     "category_id": string | null,
     "contact_id": string | null,

@@ -93,6 +93,16 @@ export const findContact = async (
 		});
 
 		if (contact) {
+			const transactionCount = await prisma.transaction.count({
+				where: { contactId: contact.id },
+			});
+
+			const lastTransaction = await prisma.transaction.findFirst({
+				where: { contactId: contact.id },
+				orderBy: { transactionDate: 'desc' },
+				select: { transactionDate: true },
+			});
+
 			return {
 				id: contact.id,
 				name: contact.name,
@@ -100,8 +110,8 @@ export const findContact = async (
 				contactType: contact.ContactType as ContactTypeValue | null,
 				categoryId: contact.categoryId,
 				nameVariations: contact.nameVariations,
-				transactionCount: contact.transactionCount,
-				lastTransactionDate: contact.lastTransactionDate,
+				transactionCount,
+				lastTransactionDate: lastTransaction?.transactionDate || null,
 				matchConfidence: 1.0,
 				matchedVariation: null,
 			};
@@ -112,6 +122,16 @@ export const findContact = async (
 
 		for (const cont of allContacts) {
 			if (cont.normalizedName?.toLowerCase() === normalizedInput) {
+				const transactionCount = await prisma.transaction.count({
+					where: { contactId: cont.id },
+				});
+
+				const lastTransaction = await prisma.transaction.findFirst({
+					where: { contactId: cont.id },
+					orderBy: { transactionDate: 'desc' },
+					select: { transactionDate: true },
+				});
+
 				return {
 					id: cont.id,
 					name: cont.name,
@@ -119,8 +139,8 @@ export const findContact = async (
 					contactType: cont.ContactType as ContactTypeValue | null,
 					categoryId: cont.categoryId,
 					nameVariations: cont.nameVariations,
-					transactionCount: cont.transactionCount,
-					lastTransactionDate: cont.lastTransactionDate,
+					transactionCount,
+					lastTransactionDate: lastTransaction?.transactionDate || null,
 					matchConfidence: 0.95,
 					matchedVariation: cont.normalizedName,
 				};
@@ -128,6 +148,16 @@ export const findContact = async (
 
 			for (const variation of cont.nameVariations) {
 				if (variation.toLowerCase() === normalizedInput) {
+					const transactionCount = await prisma.transaction.count({
+						where: { contactId: cont.id },
+					});
+
+					const lastTransaction = await prisma.transaction.findFirst({
+						where: { contactId: cont.id },
+						orderBy: { transactionDate: 'desc' },
+						select: { transactionDate: true },
+					});
+
 					return {
 						id: cont.id,
 						name: cont.name,
@@ -135,8 +165,8 @@ export const findContact = async (
 						contactType: cont.ContactType as ContactTypeValue | null,
 						categoryId: cont.categoryId,
 						nameVariations: cont.nameVariations,
-						transactionCount: cont.transactionCount,
-						lastTransactionDate: cont.lastTransactionDate,
+						transactionCount,
+						lastTransactionDate: lastTransaction?.transactionDate || null,
 						matchConfidence: 0.9,
 						matchedVariation: variation,
 					};
@@ -181,6 +211,16 @@ export const findContact = async (
 		}
 
 		if (bestMatch) {
+			const transactionCount = await prisma.transaction.count({
+				where: { contactId: bestMatch.id },
+			});
+
+			const lastTransaction = await prisma.transaction.findFirst({
+				where: { contactId: bestMatch.id },
+				orderBy: { transactionDate: 'desc' },
+				select: { transactionDate: true },
+			});
+
 			return {
 				id: bestMatch.id,
 				name: bestMatch.name,
@@ -188,8 +228,8 @@ export const findContact = async (
 				contactType: bestMatch.ContactType as ContactTypeValue | null,
 				categoryId: bestMatch.categoryId,
 				nameVariations: bestMatch.nameVariations,
-				transactionCount: bestMatch.transactionCount,
-				lastTransactionDate: bestMatch.lastTransactionDate,
+				transactionCount,
+				lastTransactionDate: lastTransaction?.transactionDate || null,
 				matchConfidence: bestScore,
 				matchedVariation: null,
 			};
@@ -294,11 +334,6 @@ export const searchContacts = async (input: SearchContactsInput) => {
 					},
 				],
 			},
-			orderBy: [
-				{ transactionCount: "desc" },
-				{ lastTransactionDate: "desc" },
-			],
-			take: limit,
 		});
 
 		const fuzzyMatches = await prisma.contact.findMany({
@@ -317,7 +352,43 @@ export const searchContacts = async (input: SearchContactsInput) => {
 			);
 		}).slice(0, Math.max(0, limit - contacts.length));
 
-		return [...contacts, ...additionalMatches];
+		const allMatches = [...contacts, ...additionalMatches];
+
+		// Get transaction counts for all contacts
+		const contactsWithCounts = await Promise.all(
+			allMatches.map(async (contact) => {
+				const transactionCount = await prisma.transaction.count({
+					where: { contactId: contact.id },
+				});
+
+				const lastTransaction = await prisma.transaction.findFirst({
+					where: { contactId: contact.id },
+					orderBy: { transactionDate: 'desc' },
+					select: { transactionDate: true },
+				});
+
+				return {
+					...contact,
+					transactionCount,
+					lastTransactionDate: lastTransaction?.transactionDate || null,
+				};
+			})
+		);
+
+		// Sort by transaction count and last transaction date
+		const sortedContacts = contactsWithCounts.sort((a, b) => {
+			if (b.transactionCount !== a.transactionCount) {
+				return b.transactionCount - a.transactionCount;
+			}
+			if (a.lastTransactionDate && b.lastTransactionDate) {
+				return b.lastTransactionDate.getTime() - a.lastTransactionDate.getTime();
+			}
+			if (a.lastTransactionDate) return -1;
+			if (b.lastTransactionDate) return 1;
+			return 0;
+		});
+
+		return sortedContacts.slice(0, limit);
 	} catch (error) {
 		throw new AppError(
 			500,
@@ -344,7 +415,21 @@ export const getContactById = async (contactId: string) => {
 			throw new AppError(404, "Contact not found", "getContactById");
 		}
 
-		return contact;
+		const transactionCount = await prisma.transaction.count({
+			where: { contactId: contact.id },
+		});
+
+		const lastTransaction = await prisma.transaction.findFirst({
+			where: { contactId: contact.id },
+			orderBy: { transactionDate: 'desc' },
+			select: { transactionDate: true },
+		});
+
+		return {
+			...contact,
+			transactionCount,
+			lastTransactionDate: lastTransaction?.transactionDate || null,
+		};
 	} catch (error) {
 		if (error instanceof AppError) {
 			throw error;
@@ -434,53 +519,50 @@ export const updateContact = async (input: UpdateContactInput) => {
 	}
 };
 
-interface IncrementTransactionCountInput {
-	contactId: string;
-	transactionDate: Date;
-}
-
-export const incrementTransactionCount = async (input: IncrementTransactionCountInput) => {
-	const { contactId, transactionDate } = input;
-
-	if (!contactId || !transactionDate) {
-		throw new AppError(400, "Contact ID and transaction date are required", "incrementTransactionCount");
-	}
-
-	try {
-		const contact = await prisma.contact.update({
-			where: { id: contactId },
-			data: {
-				transactionCount: {
-					increment: 1,
-				},
-				lastTransactionDate: transactionDate,
-			},
-		});
-
-		return contact;
-	} catch (error) {
-		throw new AppError(
-			500,
-			`Failed to increment transaction count: ${error instanceof Error ? error.message : "Unknown error"}`,
-			"incrementTransactionCount"
-		);
-	}
-};
 
 export const getAllContacts = async (limit?: number) => {
 	try {
 		const contacts = await prisma.contact.findMany({
-			orderBy: [
-				{ transactionCount: "desc" },
-				{ lastTransactionDate: "desc" },
-			],
-			take: limit,
 			include: {
 				defaultCategory: true,
 			},
 		});
 
-		return contacts;
+		// Get transaction counts for all contacts
+		const contactsWithCounts = await Promise.all(
+			contacts.map(async (contact) => {
+				const transactionCount = await prisma.transaction.count({
+					where: { contactId: contact.id },
+				});
+
+				const lastTransaction = await prisma.transaction.findFirst({
+					where: { contactId: contact.id },
+					orderBy: { transactionDate: 'desc' },
+					select: { transactionDate: true },
+				});
+
+				return {
+					...contact,
+					transactionCount,
+					lastTransactionDate: lastTransaction?.transactionDate || null,
+				};
+			})
+		);
+
+		// Sort by transaction count and last transaction date
+		const sortedContacts = contactsWithCounts.sort((a, b) => {
+			if (b.transactionCount !== a.transactionCount) {
+				return b.transactionCount - a.transactionCount;
+			}
+			if (a.lastTransactionDate && b.lastTransactionDate) {
+				return b.lastTransactionDate.getTime() - a.lastTransactionDate.getTime();
+			}
+			if (a.lastTransactionDate) return -1;
+			if (b.lastTransactionDate) return 1;
+			return 0;
+		});
+
+		return limit ? sortedContacts.slice(0, limit) : sortedContacts;
 	} catch (error) {
 		throw new AppError(
 			500,

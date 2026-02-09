@@ -6,7 +6,6 @@ import {
 	searchContactsController,
 	getContactByIdController,
 	updateContactController,
-	incrementTransactionCountController,
 	getAllContactsController,
 } from "../controller/contact.controller";
 
@@ -18,6 +17,5 @@ contactRouter.get("/search", authVerify, searchContactsController);
 contactRouter.get("/all", authVerify, getAllContactsController);
 contactRouter.get("/:contactId", authVerify, getContactByIdController);
 contactRouter.put("/:contactId", authVerify, updateContactController);
-contactRouter.patch("/:contactId/increment", authVerify, incrementTransactionCountController);
 
 export default contactRouter;
