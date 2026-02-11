@@ -6,6 +6,8 @@ import {
 	updateUserProfile,
 	changeUserPassword
 } from "../services/user.service";
+import { uploadFile } from "../services/upload";
+import { AppError } from "../middlewares/errorHandler";
 
 export const updateUserSettingsController = async (
 	req: Request,
@@ -107,6 +109,35 @@ export const changePasswordController = async (
 
 		res.status(200).json({
 			message: "Password changed successfully",
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const uploadProfileImageController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	try {
+		if (!req.file) {
+			throw new AppError(400, "No image file provided", "uploadProfileImage");
+		}
+
+		const uploadedFile = await uploadFile(
+			req.file,
+			req.file.mimetype,
+			"profile"
+		);
+
+		res.status(200).json({
+			message: "Image uploaded successfully",
+			data: {
+				url: uploadedFile.url,
+				path: uploadedFile.path,
+				filename: uploadedFile.file,
+			},
 		});
 	} catch (err) {
 		next(err);

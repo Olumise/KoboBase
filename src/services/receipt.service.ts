@@ -15,6 +15,7 @@ import {
 import { googleOCR, extractPDFText } from "./ocr.service";
 import { detectDocumentType, determineProcessingMode } from "./documentDetection.service";
 import { validateTransactionCount } from "./transactionLimits.service";
+import { deleteFile } from "./upload";
 
 export const addReceipt = async (data: AddReceiptType) => {
 	AddReceiptSchema.parse(data);
@@ -209,6 +210,14 @@ export const updateReceiptFile = async (
 		);
 	}
 
+	// Delete the old file from S3 storage before updating
+	try {
+		await deleteFile(receipt.fileUrl);
+	} catch (err) {
+		console.error("Failed to delete old file from storage:", err);
+		// Continue with update even if old file deletion fails
+	}
+
 	const updatedReceipt = await prisma.receipt.update({
 		where: {
 			id: receiptId,
@@ -337,7 +346,15 @@ export const deleteReceipt = async (receiptId: string, userId: string) => {
 		throw new AppError(403, "Unauthorized access to this receipt!", "deleteReceipt");
 	}
 
-	// Delete related records first (cascade delete)
+	// Delete the file from S3 storage first
+	try {
+		await deleteFile(receipt.fileUrl);
+	} catch (err) {
+		console.error("Failed to delete file from storage:", err);
+		// Continue with database deletion even if file deletion fails
+	}
+
+	// Delete related records (cascade delete)
 	// Delete transactions associated with this receipt
 	if (receipt.transactions.length > 0) {
 		await prisma.transaction.deleteMany({

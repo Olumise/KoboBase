@@ -17,7 +17,7 @@ export const addReceiptController = async (
 		if (!file) {
 			throw new AppError(400, "No file uploaded", "addReceiptController");
 		}
-		const image = await uploadFile(file, file.mimetype, "kobo-base");
+		const image = await uploadFile(file, file.mimetype, "kobo-base", userId);
 		const data:AddReceiptType = {
 			userId,
 			fileSize: file?.size,
@@ -67,7 +67,7 @@ export const updateReceiptFileController = async (
 			throw new AppError(400, "No file uploaded", "updateReceiptFileController");
 		}
 
-		const image = await uploadFile(file, file.mimetype, "kobo-base");
+		const image = await uploadFile(file, file.mimetype, "kobo-base", userId);
 
 		const data: UpdateReceiptFileType = {
 			fileUrl: image.url,
