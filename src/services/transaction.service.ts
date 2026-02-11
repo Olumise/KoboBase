@@ -17,6 +17,7 @@ import { executeAITool } from "./aiToolExecutor.service";
 import { OpenAIllmGPT4Turbo as OpenAIllm, OpenAIllmCreative } from "../models/llm.models";
 import { generateEmbedding } from "./embedding.service";
 import { ensureTransactionReference } from "../utils/transactionReferenceGenerator";
+import { shouldRegenerateSummary, regenerateTransactionSummary } from "../utils/summaryGenerator";
 
 export const generateTransaction = async (
 	input: string,
@@ -704,6 +705,9 @@ export const updateTransaction = async ({
 		}
 	}
 
+	// Check if we need to regenerate the summary
+	const needsSummaryRegeneration = shouldRegenerateSummary(updates);
+
 	const updatedTransaction = await prisma.transaction.update({
 		where: { id: transactionId },
 		data: updates,
@@ -715,6 +719,17 @@ export const updateTransaction = async ({
 			receipt: true,
 		},
 	});
+
+	// Regenerate summary and embedding if key fields changed
+	if (needsSummaryRegeneration) {
+		try {
+			await regenerateTransactionSummary(transactionId, generateEmbedding);
+			console.log(`Summary regenerated for transaction ${transactionId} after update`);
+		} catch (error) {
+			console.error(`Failed to regenerate summary for transaction ${transactionId}:`, error);
+			// Don't fail the update if summary regeneration fails - log and continue
+		}
+	}
 
 	return updatedTransaction;
 };

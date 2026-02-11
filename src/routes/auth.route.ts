@@ -1,10 +1,12 @@
 import express from "express";
-import { signInController, signUpController } from "../controller/auth.controller";
+import { signInController, signUpController, getSessionController, logoutController } from "../controller/auth.controller";
 
 const authRouter = express();
 
-authRouter.post("/signup", signUpController);
-authRouter.post("/signin", signInController);
+authRouter.post("/sign-up/email", signUpController);
+authRouter.post("/sign-in/email", signInController);
+authRouter.get("/get-session", getSessionController);
+authRouter.post("/logout", logoutController);
 
 
 export default authRouter;

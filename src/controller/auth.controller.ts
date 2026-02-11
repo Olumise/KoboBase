@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { signInUser, signUpUser } from "../services/auth.service";
+import { signInUser, signUpUser, getUser } from "../services/auth.service";
 
 export const signUpController = async (
 	req: Request,
@@ -37,6 +37,40 @@ export const signInController = async (
 		res.status(201).json({
 			message: "Signed In sucessfully!!",
 			data: response,
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const getSessionController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	try {
+		const headers = req.headers;
+		const session = await getUser(headers);
+
+		res.status(200).json({
+			message: "Session retrieved successfully",
+			data: session,
+		});
+	} catch (err) {
+		next(err);
+	}
+};
+
+export const logoutController = async (
+	req: Request,
+	res: Response,
+	next: NextFunction
+) => {
+	try {
+		res.clearCookie("better-auth.session_token");
+
+		res.status(200).json({
+			message: "Logged out successfully",
 		});
 	} catch (err) {
 		next(err);

@@ -345,6 +345,11 @@ export const sendClarificationMessage = async (
 			user: {
 				select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
 			},
+			clarificationMessages: {
+				orderBy: {
+					createdAt: "asc",
+				},
+			},
 		},
 	});
 
@@ -385,20 +390,23 @@ export const sendClarificationMessage = async (
 		},
 	});
 
-	const allMessages = await prisma.clarificationMessage.findMany({
-		where: {
-			sessionId: session.id,
-		},
-		orderBy: {
-			createdAt: "asc",
-		},
-	});
+	// Use messages from session include instead of separate query
+	const allMessages = [...session.clarificationMessages, {
+		sessionId: session.id,
+		role: "user" as const,
+		messageText: message,
+		createdAt: new Date(),
+		id: "temp", // Temporary ID for the just-created message
+	}];
 
 	const existingToolResults = (session.toolResults as any) || {};
 
 	const conversationHistory = [
 		new SystemMessage({
 			content: `${systemPrompt}\n\nReceipt OCR Text:\n${session.extractedData}`,
+			additional_kwargs: {
+				cache_control: { type: "standard" }
+			}
 		}),
 		...allMessages.map((msg) =>
 			msg.role === "user"
@@ -514,15 +522,41 @@ export const sendClarificationMessage = async (
 		});
 	}
 
-	const finalPrompt = [
-		{
-			role: "system",
-			content: `${systemPrompt}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(allToolResults, null, 2)}`,
-		},
-		...conversationHistory.slice(1),
-		{
-			role: "user",
-			content: `Evaluate the transaction based on the conversation history and tool results.
+	// Smart caching: Check if we should skip redundant AI call
+	const hasNewToolResults = Object.keys(newToolResults).length > 0;
+	const lastAssistantMessage = allMessages.filter(m => m.role === 'assistant').pop();
+	const isSimpleResponse = message.trim().length < 100 &&
+	                         !hasNewToolResults &&
+	                         lastAssistantMessage;
+
+	let aiResponse;
+
+	// Try to reuse cached response for simple clarifications
+	if (isSimpleResponse) {
+		try {
+			const parsedResponse = JSON.parse(lastAssistantMessage.messageText);
+			// Only reuse if it's a valid structured response
+			if (parsedResponse && typeof parsedResponse === 'object' && parsedResponse.is_complete !== undefined) {
+				aiResponse = parsedResponse;
+				console.log('✓ Reusing cached AI response - no re-extraction needed');
+			}
+		} catch (e) {
+			// If parsing fails, we'll generate a new response below
+			aiResponse = null;
+		}
+	}
+
+	// Generate new response only if we don't have a cached one
+	if (!aiResponse) {
+		const finalPrompt = [
+			{
+				role: "system",
+				content: `${systemPrompt}\n\nReceipt OCR Text:\n${session.extractedData}\n\nTool Results:\n${JSON.stringify(allToolResults, null, 2)}`,
+			},
+			...conversationHistory.slice(1),
+			{
+				role: "user",
+				content: `Evaluate the transaction based on the conversation history and tool results.
 
 CRITICAL - Extract IDs from tool results (nested structure {"success": true, "data": {...}}):
 
@@ -544,15 +578,16 @@ CRITICAL - Extract IDs from tool results (nested structure {"success": true, "da
    - MUST be a valid UUID string OR null
 
 Populate ALL enrichment_data fields. NEVER leave any field undefined. Follow all validation rules including description validation.`,
-		},
-	];
+			},
+		];
 
-	const transactionllm = OpenAIllm.withStructuredOutput(
-		TransactionReceiptAiResponseSchema,
-		{ name: "extract_transaction", strict: true }
-	);
+		const transactionllm = OpenAIllm.withStructuredOutput(
+			TransactionReceiptAiResponseSchema,
+			{ name: "extract_transaction", strict: true }
+		);
 
-	const aiResponse = await transactionllm.invoke(finalPrompt);
+		aiResponse = await transactionllm.invoke(finalPrompt);
+	}
 
 	const aiMessage = await prisma.clarificationMessage.create({
 		data: {
@@ -658,6 +693,9 @@ export const handleConfirmationResponse = async (
 			user: {
 				select: { id: true, name: true, defaultCurrency: true, customContextPrompt: true },
 			},
+			clarificationMessages: {
+				orderBy: { createdAt: "asc" },
+			},
 		},
 	});
 
@@ -707,10 +745,8 @@ export const handleConfirmationResponse = async (
 		},
 	});
 
-	const allMessages = await prisma.clarificationMessage.findMany({
-		where: { sessionId: session.id },
-		orderBy: { createdAt: "asc" },
-	});
+	// Use messages from session include instead of separate query
+	const allMessages = session.clarificationMessages;
 
 	const finalPrompt = [
 		{

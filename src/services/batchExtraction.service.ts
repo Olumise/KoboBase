@@ -301,7 +301,12 @@ export const initiateBatchTransactionsFromReceipt = async (
 				},
 			});
 
-			const question = generateConfirmationQuestion(toolCall.name, toolCall.args);
+			const question = {
+				field: "tool_confirmation",
+				question: generateConfirmationQuestion(toolCall.name, toolCall.args),
+				suggestions: ["yes", "no"],
+				hint: "This helps us keep your data organized and accurate"
+			};
 
 			await prisma.clarificationMessage.create({
 				data: {

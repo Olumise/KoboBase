@@ -18,6 +18,7 @@ import { buildExtractionPrompt } from "../lib/prompts";
 import { convertFieldsToQuestions } from "../utils/questionFormatter";
 import { generateEmbedding } from "./embedding.service";
 import * as z from "zod";
+import { generateAISummary } from "../utils/summaryGenerator";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTokens, estimateTokensForTools } from "../utils/tokenCounter";
 import { trackLLMCall, initializeSession } from "./costTracking.service";
@@ -413,10 +414,15 @@ export const initiateSequentialProcessing = async (
 			},
 		});
 
-		const question = generateConfirmationQuestion(
-			firstToolCall.name,
-			firstToolCall.args
-		);
+		const question = {
+			field: "tool_confirmation",
+			question: generateConfirmationQuestion(
+				firstToolCall.name,
+				firstToolCall.args
+			),
+			suggestions: ["yes", "no"],
+			hint: "This helps us keep your data organized and accurate"
+		};
 
 		await prisma.clarificationMessage.create({
 			data: {
@@ -739,6 +745,16 @@ export const approveSequentialTransaction = async (
 	}
 
 	const transactionItem = transactionResults[currentIndex];
+
+	// Check if this transaction has already been approved
+	if (transactionItem.processing_status === "approved" && transactionItem.created_transaction_id) {
+		throw new AppError(
+			400,
+			"This transaction has already been approved. Navigate to a different transaction to approve it.",
+			"approveSequentialTransaction"
+		);
+	}
+
 	const txData = transactionItem.transaction;
 	const enrichment = transactionItem.enrichment_data;
 
@@ -824,10 +840,21 @@ export const approveSequentialTransaction = async (
 		}
 	}
 
-	const summary =
-		txData.summary ||
-		txData.description ||
-		`${txData.transaction_type} - ${txData.amount}`;
+	// Generate AI-powered summary based on the complete transaction context
+	const summary = await generateAISummary({
+		transactionType: transactionType,
+		amount: edits?.amount || txData.amount,
+		currency: txData.currency || "NGN",
+		description: edits?.description || txData.description || undefined,
+		contactName: transaction.contact?.name,
+		categoryName: transaction.category?.name,
+		transactionDate: parsedDate,
+		paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
+		referenceNumber: txData.transaction_reference || undefined,
+		isSelfTransaction: enrichment?.is_self_transaction || false,
+		userBankAccountName: transaction.userBankAccount?.accountName,
+		toBankAccountName: transaction.toBankAccount?.accountName,
+	});
 	const embedding = await generateEmbedding(summary);
 
 	await prisma.$executeRaw`
@@ -837,8 +864,24 @@ export const approveSequentialTransaction = async (
 		WHERE id = ${transaction.id}
 	`;
 
+	// Mark this transaction as approved with the created transaction ID
+	transactionResults[currentIndex] = {
+		...transactionItem,
+		processing_status: "approved",
+		created_transaction_id: transaction.id,
+	};
+
 	const nextIndex = currentIndex + 1;
-	const isComplete = nextIndex >= transactionResults.length;
+
+	// Check if all transactions have been approved (no skipped or unprocessed transactions)
+	const hasUnprocessedOrSkippedTransactions = transactionResults.some(
+		(tx: any, idx: number) =>
+			idx !== currentIndex && // Not the current transaction being approved
+			(!tx.processing_status || tx.processing_status === "skipped") // Has no status OR was skipped
+	);
+
+	// Only mark as complete if we've reached the end AND all transactions are approved
+	const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
 
 	let nextTransaction: BatchTransactionInitiationItem | null = null;
 	if (!isComplete) {
@@ -879,12 +922,10 @@ export const approveSequentialTransaction = async (
 			totalProcessed: { increment: 1 },
 			status: isComplete ? "completed" : "in_progress",
 			completedAt: isComplete ? new Date() : undefined,
-			extractedData: isComplete
-				? extractedData
-				: {
-						...extractedData,
-						transaction_results: transactionResults,
-				  },
+			extractedData: {
+				...extractedData,
+				transaction_results: transactionResults,
+			},
 		},
 	});
 
@@ -957,19 +998,29 @@ export const skipSequentialTransaction = async (
 
 	const transactionItem = transactionResults[currentIndex];
 
-	if (transactionItem.clarification_session_id) {
-		try {
-			await completeClarificationSession(
-				transactionItem.clarification_session_id,
-				userId
-			);
-		} catch (clarificationError) {
-			console.error("Failed to complete clarification session:", clarificationError);
-		}
-	}
+	// Don't close clarification session when skipping - user may want to come back to it
+	// It will be closed when:
+	// 1. Transaction is approved
+	// 2. User manually completes the batch session
+
+	// Mark this transaction as skipped
+	transactionResults[currentIndex] = {
+		...transactionItem,
+		processing_status: "skipped",
+		created_transaction_id: null,
+	};
 
 	const nextIndex = currentIndex + 1;
-	const isComplete = nextIndex >= transactionResults.length;
+
+	// Check if all transactions have been approved (no skipped or unprocessed transactions)
+	const hasUnprocessedOrSkippedTransactions = transactionResults.some(
+		(tx: any, idx: number) =>
+			idx !== currentIndex && // Not the current transaction being skipped
+			(!tx.processing_status || tx.processing_status === "skipped") // Has no status OR was skipped
+	);
+
+	// Only mark as complete if we've reached the end AND all transactions are approved
+	const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
 
 	let nextTransaction: BatchTransactionInitiationItem | null = null;
 	if (!isComplete) {
@@ -1062,6 +1113,23 @@ export const completeSequentialSession = async (
 		);
 	}
 
+	// Close all remaining clarification sessions when manually completing the batch
+	const extractedData = batchSession.extractedData as any;
+	const transactionResults = extractedData?.transaction_results || [];
+
+	for (const transactionItem of transactionResults) {
+		if (transactionItem.clarification_session_id) {
+			try {
+				await completeClarificationSession(
+					transactionItem.clarification_session_id,
+					userId
+				);
+			} catch (clarificationError) {
+				console.error("Failed to complete clarification session:", clarificationError);
+			}
+		}
+	}
+
 	const completedAt = new Date();
 
 	await prisma.batchSession.update({
@@ -1126,18 +1194,10 @@ export const goToTransactionByIndex = async (
 		);
 	}
 
-	// 3. Close clarification session of current transaction (if exists)
-	const currentTransactionItem = transactionResults[previousIndex];
-	if (currentTransactionItem?.clarification_session_id) {
-		try {
-			await completeClarificationSession(
-				currentTransactionItem.clarification_session_id,
-				userId
-			);
-		} catch (clarificationError) {
-			console.error("Failed to complete clarification session:", clarificationError);
-		}
-	}
+	// 3. Don't close clarification session when navigating - user may want to come back
+	// Clarification sessions will be closed when:
+	// 1. Transaction is approved
+	// 2. User manually completes the batch session
 
 	// 4. Check if target transaction needs clarification
 	const targetTransactionItem = transactionResults[targetIndex];

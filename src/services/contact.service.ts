@@ -285,7 +285,6 @@ export const createContact = async (input: CreateContactInput) => {
 				ContactType: determinedType,
 				categoryId: categoryId || null,
 				nameVariations,
-				transactionCount: 0,
 				notes: notes || null,
 			},
 		});

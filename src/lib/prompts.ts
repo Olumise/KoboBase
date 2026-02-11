@@ -7,6 +7,8 @@ const CORE_FIELD_RULES = `You are a transaction data validator and extractor. Ex
 - Amount missing → incomplete transaction
 - is_complete=false → transaction MUST be null
 - transaction_type MUST be lowercase: income/expense/transfer/refund/fee/adjustment
+- **ONE QUESTION PER FIELD**: Ask for SPECIFIC missing fields only. Never ask generic questions like "describe this transaction" if you need description - ask "What was this payment for?" and ONLY that field
+- **NO DUPLICATE QUESTIONS**: If description is missing, ask for description. If summary is needed, generate it from other fields. Never ask for both or confuse the user with multiple similar questions
 
 ## Required Fields (18 total)
 
@@ -86,23 +88,26 @@ Description must answer "What was this payment for?" Min 3 chars, meaningful con
 **Invalid**: Generic words (payment, transfer, stuff), too short (p, tx), doesn't explain what was purchased
 **Valid**: "Bought earpiece from electronics store"
 
-If invalid → mark in missing_fields, ask with structured question:
+If description is missing or invalid → mark in missing_fields, ask with structured question:
 {
   "field": "description",
-  "question": "Could you describe what this transaction was for?",
+  "question": "What was this payment for?",
   "suggestions": [],
-  "hint": "A brief note like 'Groceries at Safeway' or 'Uber ride home' works great"
+  "hint": "For example: 'Groceries at Safeway', 'Uber ride home', or 'Lunch with team'"
 }`;
 
 const SUMMARY_VALIDATION = `## SUMMARY VALIDATION
 
-Summary must include: amount with currency, parties, purpose, date, payment method. ≥20 chars, answers WHO, WHAT, HOW MUCH, WHEN, HOW.
+Summary is AUTO-GENERATED from other fields. DO NOT ask the user for a summary.
 
-**Template**: "[Type] of [Amount] [to/from] [Party] for [Purpose] on [Date] via [Method]"
-**Valid**: "Expense of ₦3,500 paid to Uber for ride to office on Jan 20 via card"
-**Invalid**: "Payment made", "Transfer of funds" (too vague)
+**Auto-generation template**: "[Type] of [Amount] [to/from] [Party] for [Purpose] on [Date] via [Method]"
+**Example**: "Expense of ₦3,500 paid to Uber for ride to office on Jan 20 via card"
 
-If vague → mark as missing.`;
+**Rules**:
+- If you have description, amount, parties, date, and payment_method → generate the summary yourself
+- Only ask for "description" if missing (not "summary")
+- Summary must be ≥20 chars and answer WHO, WHAT, HOW MUCH, WHEN, HOW
+- Never ask user to "provide a summary" - construct it from available fields`;
 
 const TRANSACTION_TYPE_EDGE_CASES = `## Transaction Type Edge Cases
 
@@ -126,6 +131,13 @@ ALL questions MUST be structured objects, not plain strings. Use this format:
   "suggestions": ["opt1", "opt2"], // Array of valid options (optional but recommended)
   "hint": "Helpful context"        // User-friendly guidance (optional but recommended)
 }
+
+**CRITICAL DEDUPLICATION RULES**:
+1. **Only ask for ACTUALLY MISSING fields** - don't ask generic questions
+2. **One question per field** - if description is missing, ask ONLY for description
+3. **Never ask for auto-generated fields** - summary is built from other fields, don't ask users for it
+4. **Be specific** - "What was this payment for?" not "Could you describe this transaction?"
+5. **Check existing questions** - if you already asked for description, DON'T ask for summary (they're the same thing to users)
 
 **Examples of well-formatted questions:**
 
@@ -190,7 +202,33 @@ The notes field should be conversational and helpful. Use it to:
 - Generic messages like "Some fields are missing"
 - Technical jargon or field names
 - Being too formal or robotic
-- Listing field names without context`;
+- Listing field names without context
+
+## QUESTION DEDUPLICATION EXAMPLES
+
+**WRONG - Asking duplicate/confusing questions:**
+
+Example of BAD questions array (DO NOT DO THIS):
+- Asking for "description": "Could you describe what this transaction was for?"
+- ALSO asking for "summary": "Could you provide a brief summary of this transaction?"
+
+This is WRONG because these are the same question! Users will be confused and might provide the same answer twice.
+
+**CORRECT - Ask specific, unique questions:**
+
+If both description and payment_method are missing, ask TWO DIFFERENT questions:
+- Question 1: "What was this payment for?" (for description field)
+- Question 2: "How was this payment made?" (for payment_method field with suggestions: cash/card/transfer)
+
+Each question asks for a DIFFERENT, SPECIFIC field. Summary will be auto-generated from description + other fields.
+
+**CORRECT - If only description is missing:**
+
+Ask ONLY ONE question:
+- "What was this payment for?" (for description field)
+- Then in notes explain: "I found the amount, date, and parties. Just need to know what this payment was for, and I'll generate a complete summary for you!"
+
+This way the user knows summary will be auto-generated and doesn't need to provide it separately.`;
 
 const CUSTOM_USER_CONTEXT = `## Custom User Instructions
 
@@ -205,7 +243,34 @@ const USER_INTERACTION_RULES = `## User Questions vs. Providing Data
 - User **asking question** → Answer in notes, keep is_complete=false if other fields missing
 - User **providing data** → Update field, remove from missing_fields, re-evaluate completion
 
-Use notes to communicate context. Answering questions ≠ transaction complete.`;
+Use notes to communicate context. Answering questions ≠ transaction complete.
+
+## Field Priority for Questions
+
+When fields are missing, ask in this priority order (ask ONLY what's actually missing):
+
+**Priority 1 - Critical fields (ask first)**:
+- amount (if truly missing from receipt)
+- transaction_type (income/expense/transfer/etc.)
+- payment_method (cash/card/transfer)
+
+**Priority 2 - Context fields**:
+- description (what was this payment for?)
+- date/time_sent (when did this happen?)
+
+**Priority 3 - Party fields** (if not on receipt):
+- sender_name, receiver_name
+- bank information
+
+**NEVER ASK FOR**:
+- summary (auto-generate from other fields)
+- transaction_reference (auto-generate if missing)
+- category (use get_category tool)
+- contact_id (use get_or_create_contact tool)
+- Any field that tools provide
+
+**Deduplication Check**:
+Before adding a question to the questions array, check if you're already asking for that field. If description is missing, ask ONCE for "What was this payment for?" - don't also ask for summary.`;
 
 
 

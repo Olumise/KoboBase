@@ -3,6 +3,7 @@ import { AppError } from "../middlewares/errorHandler";
 import { generateEmbedding } from "./embedding.service";
 import { BatchTransactionExtraction } from "../schema/ai-formats";
 import { ensureTransactionReference } from "../utils/transactionReferenceGenerator";
+import { generateAISummary } from "../utils/summaryGenerator";
 
 interface TransactionEdit {
 	categoryId?: string;
@@ -125,7 +126,21 @@ export const approveBatchTransactions = async (
 				},
 			});
 
-			const summary = txData.summary || txData.description || `${txData.transaction_type} - ${txData.amount}`;
+			// Generate AI-powered summary based on the complete transaction context
+			const summary = await generateAISummary({
+				transactionType: transactionType,
+				amount: edits?.amount || txData.amount,
+				currency: txData.currency || "NGN",
+				description: edits?.description || txData.description || undefined,
+				contactName: transaction.contact?.name,
+				categoryName: transaction.category?.name,
+				transactionDate: parsedDate,
+				paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
+				referenceNumber: finalReferenceNumber,
+				isSelfTransaction: enrichment?.is_self_transaction || false,
+				userBankAccountName: transaction.userBankAccount?.accountName,
+				toBankAccountName: transaction.toBankAccount?.accountName,
+			});
 			const embedding = await generateEmbedding(summary);
 
 			await prisma.$executeRaw`
