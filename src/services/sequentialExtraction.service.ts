@@ -707,38 +707,41 @@ export const approveSequentialTransaction = async (
 	totalTransactions: number;
 	isComplete: boolean;
 }> => {
-	const batchSession = await prisma.batchSession.findUnique({
-		where: { id: batchSessionId },
-		include: { receipt: true },
-	});
+	// Use Prisma transaction to prevent race conditions
+	return await prisma.$transaction(async (tx) => {
+		// Lock the batch session by reading it within the transaction
+		const batchSession = await tx.batchSession.findUnique({
+			where: { id: batchSessionId },
+			include: { receipt: true },
+		});
 
-	if (!batchSession) {
-		throw new AppError(
-			404,
-			"Batch session not found",
-			"approveSequentialTransaction"
-		);
-	}
+		if (!batchSession) {
+			throw new AppError(
+				404,
+				"Batch session not found",
+				"approveSequentialTransaction"
+			);
+		}
 
-	if (batchSession.userId !== userId) {
-		throw new AppError(
-			403,
-			"Unauthorized access to batch session",
-			"approveSequentialTransaction"
-		);
-	}
+		if (batchSession.userId !== userId) {
+			throw new AppError(
+				403,
+				"Unauthorized access to batch session",
+				"approveSequentialTransaction"
+			);
+		}
 
-	if (batchSession.processingMode !== "sequential") {
-		throw new AppError(
-			400,
-			"This is not a sequential processing session",
-			"approveSequentialTransaction"
-		);
-	}
+		if (batchSession.processingMode !== "sequential") {
+			throw new AppError(
+				400,
+				"This is not a sequential processing session",
+				"approveSequentialTransaction"
+			);
+		}
 
-	const extractedData = batchSession.extractedData as any;
-	const transactionResults = extractedData?.transaction_results || [];
-	const currentIndex = batchSession.currentIndex || 0;
+		const extractedData = batchSession.extractedData as any;
+		const transactionResults = extractedData?.transaction_results || [];
+		const currentIndex = batchSession.currentIndex || 0;
 
 	if (currentIndex >= transactionResults.length) {
 		throw new AppError(
@@ -800,156 +803,157 @@ export const approveSequentialTransaction = async (
 		);
 	}
 
-	// Ensure transaction reference exists or generate one
-	const finalReferenceNumber = ensureTransactionReference(txData.transaction_reference);
+		// Ensure transaction reference exists or generate one
+		const finalReferenceNumber = ensureTransactionReference(txData.transaction_reference);
 
-	const transaction = await prisma.transaction.create({
-		data: {
-			userId: userId,
-			receiptId: batchSession.receiptId,
-			contactId: edits?.contactId || enrichment?.contact_id || undefined,
-			categoryId: edits?.categoryId || enrichment?.category_id || undefined,
-			userBankAccountId:
-				edits?.userBankAccountId ||
-				enrichment?.user_bank_account_id ||
-				undefined,
-			toBankAccountId:
-				edits?.toBankAccountId || enrichment?.to_bank_account_id || undefined,
+		const transaction = await tx.transaction.create({
+			data: {
+				userId: userId,
+				receiptId: batchSession.receiptId,
+				contactId: edits?.contactId || enrichment?.contact_id || undefined,
+				categoryId: edits?.categoryId || enrichment?.category_id || undefined,
+				userBankAccountId:
+					edits?.userBankAccountId ||
+					enrichment?.user_bank_account_id ||
+					undefined,
+				toBankAccountId:
+					edits?.toBankAccountId || enrichment?.to_bank_account_id || undefined,
+				amount: edits?.amount || txData.amount,
+				currency: txData.currency || "NGN",
+				transactionType: transactionType as any,
+				transactionDate: parsedDate,
+				isSelfTransaction: enrichment?.is_self_transaction || false,
+				description: edits?.description || txData.description || undefined,
+				paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
+				referenceNumber: finalReferenceNumber,
+				aiConfidence: transactionItem.confidence_score,
+				status: "CONFIRMED" as any,
+			},
+			include: {
+				category: true,
+				contact: true,
+				userBankAccount: true,
+				toBankAccount: true,
+				receipt: true,
+			},
+		});
+
+		if (transactionItem.clarification_session_id) {
+			try {
+				await completeClarificationSession(
+					transactionItem.clarification_session_id,
+					userId,
+					transaction.id
+				);
+			} catch (clarificationError) {
+				console.error("Failed to complete clarification session:", clarificationError);
+			}
+		}
+
+		// Generate AI-powered summary based on the complete transaction context
+		const summary = await generateAISummary({
+			transactionType: transactionType,
 			amount: edits?.amount || txData.amount,
 			currency: txData.currency || "NGN",
-			transactionType: transactionType as any,
-			transactionDate: parsedDate,
-			isSelfTransaction: enrichment?.is_self_transaction || false,
 			description: edits?.description || txData.description || undefined,
+			contactName: transaction.contact?.name,
+			categoryName: transaction.category?.name,
+			transactionDate: parsedDate,
 			paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
 			referenceNumber: finalReferenceNumber,
-			aiConfidence: transactionItem.confidence_score,
-			status: "CONFIRMED" as any,
-		},
-		include: {
-			category: true,
-			contact: true,
-			userBankAccount: true,
-			toBankAccount: true,
-			receipt: true,
-		},
-	});
+			isSelfTransaction: enrichment?.is_self_transaction || false,
+			userBankAccountName: transaction.userBankAccount?.accountName,
+			toBankAccountName: transaction.toBankAccount?.accountName,
+		});
+		const embedding = await generateEmbedding(summary);
 
-	if (transactionItem.clarification_session_id) {
-		try {
-			await completeClarificationSession(
-				transactionItem.clarification_session_id,
-				userId,
-				transaction.id
-			);
-		} catch (clarificationError) {
-			console.error("Failed to complete clarification session:", clarificationError);
-		}
-	}
+		await tx.$executeRaw`
+			UPDATE transactions
+			SET summary = ${summary},
+				embedding = ${`[${embedding.join(",")}]`}::vector
+			WHERE id = ${transaction.id}
+		`;
 
-	// Generate AI-powered summary based on the complete transaction context
-	const summary = await generateAISummary({
-		transactionType: transactionType,
-		amount: edits?.amount || txData.amount,
-		currency: txData.currency || "NGN",
-		description: edits?.description || txData.description || undefined,
-		contactName: transaction.contact?.name,
-		categoryName: transaction.category?.name,
-		transactionDate: parsedDate,
-		paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
-		referenceNumber: finalReferenceNumber,
-		isSelfTransaction: enrichment?.is_self_transaction || false,
-		userBankAccountName: transaction.userBankAccount?.accountName,
-		toBankAccountName: transaction.toBankAccount?.accountName,
-	});
-	const embedding = await generateEmbedding(summary);
+		// Mark this transaction as approved with the created transaction ID
+		transactionResults[currentIndex] = {
+			...transactionItem,
+			processing_status: "approved",
+			created_transaction_id: transaction.id,
+		};
 
-	await prisma.$executeRaw`
-		UPDATE transactions
-		SET summary = ${summary},
-			embedding = ${`[${embedding.join(",")}]`}::vector
-		WHERE id = ${transaction.id}
-	`;
+		const nextIndex = currentIndex + 1;
 
-	// Mark this transaction as approved with the created transaction ID
-	transactionResults[currentIndex] = {
-		...transactionItem,
-		processing_status: "approved",
-		created_transaction_id: transaction.id,
-	};
+		// Check if all transactions have been approved (no skipped or unprocessed transactions)
+		const hasUnprocessedOrSkippedTransactions = transactionResults.some(
+			(tx: any, idx: number) =>
+				idx !== currentIndex && // Not the current transaction being approved
+				(!tx.processing_status || tx.processing_status === "skipped") // Has no status OR was skipped
+		);
 
-	const nextIndex = currentIndex + 1;
+		// Only mark as complete if we've reached the end AND all transactions are approved
+		const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
 
-	// Check if all transactions have been approved (no skipped or unprocessed transactions)
-	const hasUnprocessedOrSkippedTransactions = transactionResults.some(
-		(tx: any, idx: number) =>
-			idx !== currentIndex && // Not the current transaction being approved
-			(!tx.processing_status || tx.processing_status === "skipped") // Has no status OR was skipped
-	);
+		let nextTransaction: BatchTransactionInitiationItem | null = null;
+		if (!isComplete && nextIndex < transactionResults.length) {
+			const next = transactionResults[nextIndex];
 
-	// Only mark as complete if we've reached the end AND all transactions are approved
-	const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
+			if (next && next.is_complete === "false" && !next.clarification_session_id) {
+				const clarificationSession = await tx.clarificationSession.create({
+					data: {
+						receiptId: batchSession.receiptId,
+						userId,
+						extractedData: batchSession.receipt?.rawOcrText || "",
+						status: "active",
+						toolResults: extractedData?.autoToolResults || {},
+					},
+				});
 
-	let nextTransaction: BatchTransactionInitiationItem | null = null;
-	if (!isComplete && nextIndex < transactionResults.length) {
-		const next = transactionResults[nextIndex];
+				await tx.clarificationMessage.create({
+					data: {
+						sessionId: clarificationSession.id,
+						role: "assistant",
+						messageText: JSON.stringify(next),
+					},
+				});
 
-		if (next && next.is_complete === "false" && !next.clarification_session_id) {
-			const clarificationSession = await prisma.clarificationSession.create({
-				data: {
-					receiptId: batchSession.receiptId,
-					userId,
-					extractedData: batchSession.receipt?.rawOcrText || "",
-					status: "active",
-					toolResults: extractedData?.autoToolResults || {},
-				},
-			});
+				next.clarification_session_id = clarificationSession.id;
+				next.needs_clarification = true;
 
-			await prisma.clarificationMessage.create({
-				data: {
-					sessionId: clarificationSession.id,
-					role: "assistant",
-					messageText: JSON.stringify(next),
-				},
-			});
+				transactionResults[nextIndex] = next;
+			}
 
-			next.clarification_session_id = clarificationSession.id;
-			next.needs_clarification = true;
-
-			transactionResults[nextIndex] = next;
+			nextTransaction = transactionResults[nextIndex];
 		}
 
-		nextTransaction = transactionResults[nextIndex];
-	}
-
-	await prisma.batchSession.update({
-		where: { id: batchSessionId },
-		data: {
-			currentIndex: nextIndex,
-			totalProcessed: { increment: 1 },
-			status: isComplete ? "completed" : "in_progress",
-			completedAt: isComplete ? new Date() : undefined,
-			extractedData: {
-				...extractedData,
-				transaction_results: transactionResults,
+		await tx.batchSession.update({
+			where: { id: batchSessionId },
+			data: {
+				currentIndex: nextIndex,
+				totalProcessed: { increment: 1 },
+				status: isComplete ? "completed" : "in_progress",
+				completedAt: isComplete ? new Date() : undefined,
+				extractedData: {
+					...extractedData,
+					transaction_results: transactionResults,
+				},
 			},
-		},
-	});
+		});
 
-	await prisma.receipt.update({
-		where: { id: batchSession.receiptId },
-		data: {
-			processedTransactions: { increment: 1 },
-		},
-	});
+		await tx.receipt.update({
+			where: { id: batchSession.receiptId },
+			data: {
+				processedTransactions: { increment: 1 },
+			},
+		});
 
-	return {
-		createdTransaction: transaction,
-		nextTransaction,
-		currentIndex: nextIndex,
-		totalTransactions: transactionResults.length,
-		isComplete,
-	};
+		return {
+			createdTransaction: transaction,
+			nextTransaction,
+			currentIndex: nextIndex,
+			totalTransactions: transactionResults.length,
+			isComplete,
+		};
+	}); // Close the transaction wrapper
 };
 
 export const skipSequentialTransaction = async (
@@ -962,125 +966,129 @@ export const skipSequentialTransaction = async (
 	totalTransactions: number;
 	isComplete: boolean;
 }> => {
-	const batchSession = await prisma.batchSession.findUnique({
-		where: { id: batchSessionId },
-		include: { receipt: true },
-	});
+	// Use Prisma transaction to prevent race conditions
+	return await prisma.$transaction(async (tx) => {
+		const batchSession = await tx.batchSession.findUnique({
+			where: { id: batchSessionId },
+			include: { receipt: true },
+		});
 
-	if (!batchSession) {
-		throw new AppError(
-			404,
-			"Batch session not found",
-			"skipSequentialTransaction"
-		);
-	}
-
-	if (batchSession.userId !== userId) {
-		throw new AppError(
-			403,
-			"Unauthorized access to batch session",
-			"skipSequentialTransaction"
-		);
-	}
-
-	if (batchSession.processingMode !== "sequential") {
-		throw new AppError(
-			400,
-			"This is not a sequential processing session",
-			"skipSequentialTransaction"
-		);
-	}
-
-	const extractedData = batchSession.extractedData as any;
-	const transactionResults = extractedData?.transaction_results || [];
-	const currentIndex = batchSession.currentIndex || 0;
-
-	if (currentIndex >= transactionResults.length) {
-		throw new AppError(
-			400,
-			"No more transactions to skip",
-			"skipSequentialTransaction"
-		);
-	}
-
-	const transactionItem = transactionResults[currentIndex];
-
-	// Don't close clarification session when skipping - user may want to come back to it
-	// It will be closed when:
-	// 1. Transaction is approved
-	// 2. User manually completes the batch session
-
-	// Mark this transaction as skipped
-	transactionResults[currentIndex] = {
-		...transactionItem,
-		processing_status: "skipped",
-		created_transaction_id: null,
-	};
-
-	const nextIndex = currentIndex + 1;
-
-	// Check if all transactions have been approved (no skipped or unprocessed transactions)
-	const hasUnprocessedOrSkippedTransactions = transactionResults.some(
-		(tx: any, idx: number) =>
-			idx !== currentIndex && // Not the current transaction being skipped
-			(!tx.processing_status || tx.processing_status === "skipped") // Has no status OR was skipped
-	);
-
-	// Only mark as complete if we've reached the end AND all transactions are approved
-	const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
-
-	let nextTransaction: BatchTransactionInitiationItem | null = null;
-	if (!isComplete && nextIndex < transactionResults.length) {
-		const next = transactionResults[nextIndex];
-
-		if (next && next.is_complete === "false" && !next.clarification_session_id) {
-			const clarificationSession = await prisma.clarificationSession.create({
-				data: {
-					receiptId: batchSession.receiptId,
-					userId,
-					extractedData: batchSession.receipt?.rawOcrText || "",
-					status: "active",
-					toolResults: extractedData?.autoToolResults || {},
-				},
-			});
-
-			await prisma.clarificationMessage.create({
-				data: {
-					sessionId: clarificationSession.id,
-					role: "assistant",
-					messageText: JSON.stringify(next),
-				},
-			});
-
-			next.clarification_session_id = clarificationSession.id;
-			next.needs_clarification = true;
-
-			transactionResults[nextIndex] = next;
+		if (!batchSession) {
+			throw new AppError(
+				404,
+				"Batch session not found",
+				"skipSequentialTransaction"
+			);
 		}
 
-		nextTransaction = transactionResults[nextIndex];
-	}
+		if (batchSession.userId !== userId) {
+			throw new AppError(
+				403,
+				"Unauthorized access to batch session",
+				"skipSequentialTransaction"
+			);
+		}
 
-	await prisma.batchSession.update({
-		where: { id: batchSessionId },
-		data: {
-			currentIndex: nextIndex,
-			status: isComplete ? "completed" : "in_progress",
-			completedAt: isComplete ? new Date() : undefined,
-			extractedData: {
-				...extractedData,
-				transaction_results: transactionResults,
+		if (batchSession.processingMode !== "sequential") {
+			throw new AppError(
+				400,
+				"This is not a sequential processing session",
+				"skipSequentialTransaction"
+			);
+		}
+
+		const extractedData = batchSession.extractedData as any;
+		const transactionResults = extractedData?.transaction_results || [];
+		const currentIndex = batchSession.currentIndex || 0;
+
+		if (currentIndex >= transactionResults.length) {
+			throw new AppError(
+				400,
+				"No more transactions to skip",
+				"skipSequentialTransaction"
+			);
+		}
+
+		const transactionItem = transactionResults[currentIndex];
+
+		// Don't close clarification session when skipping - user may want to come back to it
+		// It will be closed when:
+		// 1. Transaction is approved
+		// 2. User manually completes the batch session
+
+		// Mark this transaction as skipped
+		transactionResults[currentIndex] = {
+			...transactionItem,
+			processing_status: "skipped",
+			created_transaction_id: null,
+		};
+
+		const nextIndex = currentIndex + 1;
+
+		// Check if all transactions have been approved (no skipped or unprocessed transactions)
+		const hasUnprocessedOrSkippedTransactions = transactionResults.some(
+			(tx: any, idx: number) =>
+				idx !== currentIndex && // Not the current transaction being skipped
+				(!tx.processing_status || tx.processing_status === "skipped") // Has no status OR was skipped
+		);
+
+		// Only mark as complete if we've reached the end AND all transactions are approved
+		// If there are skipped transactions, user must manually complete the session
+		const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
+
+		let nextTransaction: BatchTransactionInitiationItem | null = null;
+		if (!isComplete && nextIndex < transactionResults.length) {
+			const next = transactionResults[nextIndex];
+
+			if (next && next.is_complete === "false" && !next.clarification_session_id) {
+				const clarificationSession = await tx.clarificationSession.create({
+					data: {
+						receiptId: batchSession.receiptId,
+						userId,
+						extractedData: batchSession.receipt?.rawOcrText || "",
+						status: "active",
+						toolResults: extractedData?.autoToolResults || {},
+					},
+				});
+
+				await tx.clarificationMessage.create({
+					data: {
+						sessionId: clarificationSession.id,
+						role: "assistant",
+						messageText: JSON.stringify(next),
+					},
+				});
+
+				next.clarification_session_id = clarificationSession.id;
+				next.needs_clarification = true;
+
+				transactionResults[nextIndex] = next;
+			}
+
+			nextTransaction = transactionResults[nextIndex];
+		}
+
+		await tx.batchSession.update({
+			where: { id: batchSessionId },
+			data: {
+				currentIndex: nextIndex,
+				status: isComplete ? "completed" : "in_progress",
+				completedAt: isComplete ? new Date() : undefined,
+				extractedData: {
+					...extractedData,
+					transaction_results: transactionResults,
+				},
 			},
-		},
-	});
+		});
 
-	return {
-		skippedIndex: currentIndex,
-		nextTransaction,
-		currentIndex: nextIndex,
-		totalTransactions: transactionResults.length,
-		isComplete,
-	};
+		return {
+			skippedIndex: currentIndex,
+			nextTransaction,
+			currentIndex: nextIndex,
+			totalTransactions: transactionResults.length,
+			isComplete,
+		};
+	}); // Close the transaction wrapper
 };
 
 export const completeSequentialSession = async (
