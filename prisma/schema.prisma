@@ -25,6 +25,7 @@ model User {
   receipts              Receipt[]
   transactions          Transaction[]
   clarificationSessions ClarificationSession[]
+  chatSessions          ChatSession[]
   categories            Category[]
   bankAccounts          BankAccount[]
   batchSessions         BatchSession[]
@@ -315,6 +316,7 @@ model LLMUsageSession {
   userId                 String    @map("user_id")
   clarificationSessionId String?   @unique @map("clarification_session_id")
   batchSessionId         String?   @unique @map("batch_session_id")
+  chatSessionId          String?   @unique @map("chat_session_id")
   totalInputTokens       Int       @default(0) @map("total_input_tokens")
   totalOutputTokens      Int       @default(0) @map("total_output_tokens")
   totalTokens            Int       @default(0) @map("total_tokens")
@@ -332,6 +334,7 @@ model LLMUsageSession {
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   clarificationSession ClarificationSession? @relation(fields: [clarificationSessionId], references: [id], onDelete: Cascade)
   batchSession         BatchSession?         @relation(fields: [batchSessionId], references: [id], onDelete: Cascade)
+  chatSession          ChatSession?          @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([createdAt])
@@ -347,11 +350,13 @@ model UserCostMetrics {
   clarificationSessions Int       @default(0) @map("clarification_sessions")
   batchSessions         Int       @default(0) @map("batch_sessions")
   sequentialSessions    Int       @default(0) @map("sequential_sessions")
+  chatSessions          Int       @default(0) @map("chat_sessions")
   ocrCalls              Int       @default(0) @map("ocr_calls")
   detectionCalls        Int       @default(0) @map("detection_calls")
   extractionCalls       Int       @default(0) @map("extraction_calls")
   clarificationCalls    Int       @default(0) @map("clarification_calls")
   embeddingCalls        Int       @default(0) @map("embedding_calls")
+  chatCalls             Int       @default(0) @map("chat_calls")
   currentMonthTokens    Int       @default(0) @map("current_month_tokens")
   currentMonthCost      Decimal   @default(0) @db.Decimal(10, 6) @map("current_month_cost")
   monthStartDate        DateTime? @map("month_start_date")
@@ -371,14 +376,49 @@ model UserRateLimit {
   windowEnd    DateTime @map("window_end")
   requestCount Int      @default(0) @map("request_count")
   maxRequests  Int      @map("max_requests")
-  endpointPath String?  @map("endpoint_path") @db.VarChar(100)
+  endpointPath String   @default("receipt.upload") @map("endpoint_path") @db.VarChar(100)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, limitType, windowStart])
-  @@index([userId, limitType])
+  @@unique([userId, limitType, windowStart, endpointPath])
+  @@index([userId, limitType, endpointPath])
   @@index([windowEnd])
   @@map("user_rate_limits")
+}
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String?  @db.VarChar(100)
+  status    String   @default("active") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+  llmUsage LLMUsageSession?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id                    String                       @id @default(uuid())
+  sessionId             String                       @map("session_id")
+  query                 String                       @db.Text
+  queryEmbedding        Unsupported("vector(1536)")? @map("query_embedding")
+  response              String                       @db.Text
+  transactionsFound     Int                          @default(0) @map("transactions_found")
+  retrievedTransactions Json?                        @map("retrieved_transactions")
+  createdAt             DateTime                     @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("chat_messages")
 }

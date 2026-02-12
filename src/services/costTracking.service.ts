@@ -26,7 +26,7 @@ type CallBreakdown = {
 
 export async function initializeSession(
   userId: string,
-  sessionType: 'clarification' | 'batch' | 'sequential' | 'detection',
+  sessionType: 'clarification' | 'batch' | 'sequential' | 'detection' | 'chat',
   sessionId: string | null,
   metadata: SessionMetadata
 ): Promise<string> {
@@ -46,6 +46,8 @@ export async function initializeSession(
         data.clarificationSession = { connect: { id: sessionId } };
       } else if (sessionType === 'batch' || sessionType === 'sequential') {
         data.batchSession = { connect: { id: sessionId } };
+      } else if (sessionType === 'chat') {
+        data.chatSession = { connect: { id: sessionId } };
       }
     }
 
@@ -75,6 +77,7 @@ export async function trackLLMCall(
         OR: [
           { clarificationSessionId: sessionId },
           { batchSessionId: sessionId },
+          { chatSessionId: sessionId },
           { id: sessionId }, // Also try direct ID match
         ],
       },
@@ -134,6 +137,7 @@ export async function finalizeSession(sessionId: string): Promise<void> {
         OR: [
           { clarificationSessionId: sessionId },
           { batchSessionId: sessionId },
+          { chatSessionId: sessionId },
           { id: sessionId },
         ],
       },
@@ -206,6 +210,7 @@ async function updateUserMetrics(
     const extractionCalls = callBreakdown.extraction?.calls || 0;
     const clarificationCalls = callBreakdown.clarification?.calls || 0;
     const embeddingCalls = callBreakdown.embedding?.calls || 0;
+    const chatCalls = callBreakdown.chat?.calls || 0;
 
     const sessionIncrements: Partial<Prisma.UserCostMetricsUpdateInput> = {};
     if (processingMode === 'clarification') {
@@ -216,6 +221,8 @@ async function updateUserMetrics(
       sessionIncrements.batchSessions = { increment: 1 };
     } else if (processingMode === 'sequential') {
       sessionIncrements.sequentialSessions = { increment: 1 };
+    } else if (processingMode === 'chat') {
+      sessionIncrements.chatSessions = { increment: 1 };
     }
 
     await prisma.userCostMetrics.update({
@@ -231,6 +238,7 @@ async function updateUserMetrics(
         extractionCalls: { increment: extractionCalls },
         clarificationCalls: { increment: clarificationCalls },
         embeddingCalls: { increment: embeddingCalls },
+        chatCalls: { increment: chatCalls },
         ...sessionIncrements,
       },
     });

@@ -12,6 +12,7 @@ import categoryRouter from "./routes/category.route";
 import bankAccountRouter from "./routes/bankAccount.route";
 import userRouter from "./routes/user.route";
 import usageRouter from "./routes/usage.routes";
+import chatRouter from "./routes/chat.route";
 const app = express();
 const PORT = process.env.PORT;
 
@@ -34,6 +35,7 @@ app.use("/category", categoryRouter);
 app.use("/bank-account", bankAccountRouter);
 app.use("/user", userRouter);
 app.use("/usage", usageRouter);
+app.use("/chat", chatRouter);
 
 
 app.use(errorHandler);

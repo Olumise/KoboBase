@@ -37,9 +37,10 @@ export type CallType =
   | 'detection'
   | 'extraction'
   | 'clarification'
-  | 'embedding';
+  | 'embedding'
+  | 'chat';
 
-export type ProcessingMode = 'batch' | 'sequential' | 'clarification';
+export type ProcessingMode = 'batch' | 'sequential' | 'clarification' | 'chat';
 
 export function calculateCost(
   provider: string,

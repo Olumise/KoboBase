@@ -6,23 +6,55 @@ interface RateLimitConfig {
 	enabled: boolean;
 }
 
+// Endpoint-specific rate limit configurations
+const ENDPOINT_CONFIGS: Record<string, { hourlyLimit: number; dailyLimit: number; displayName: string }> = {
+	"receipt.upload": {
+		hourlyLimit: parseInt(process.env.RATE_LIMIT_UPLOAD_HOURLY || "10"),
+		dailyLimit: parseInt(process.env.RATE_LIMIT_UPLOAD_DAILY || "50"),
+		displayName: "receipt uploads"
+	},
+	"chat.create": {
+		hourlyLimit: parseInt(process.env.RATE_LIMIT_CHAT_CREATE_HOURLY || "20"),
+		dailyLimit: parseInt(process.env.RATE_LIMIT_CHAT_CREATE_DAILY || "100"),
+		displayName: "chat sessions"
+	},
+	"chat.message": {
+		hourlyLimit: parseInt(process.env.RATE_LIMIT_CHAT_MESSAGE_HOURLY || "60"),
+		dailyLimit: parseInt(process.env.RATE_LIMIT_CHAT_MESSAGE_DAILY || "500"),
+		displayName: "chat messages"
+	}
+};
+
 const getConfig = (): RateLimitConfig => ({
 	hourlyLimit: parseInt(process.env.RATE_LIMIT_UPLOAD_HOURLY || "10"),
 	dailyLimit: parseInt(process.env.RATE_LIMIT_UPLOAD_DAILY || "50"),
 	enabled: process.env.RATE_LIMIT_ENABLED !== "false"
 });
 
-const getUserLimits = async (userId: string) => {
-	const user = await prisma.user.findUnique({
-		where: { id: userId },
-		select: { hourlyUploadLimit: true, dailyUploadLimit: true }
-	});
+const getUserLimits = async (userId: string, endpoint: string) => {
+	const endpointConfig = ENDPOINT_CONFIGS[endpoint];
 
-	const config = getConfig();
+	// For receipt uploads, check user-specific limits
+	if (endpoint === "receipt.upload") {
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			select: { hourlyUploadLimit: true, dailyUploadLimit: true }
+		});
 
-	return {
-		hourlyLimit: user?.hourlyUploadLimit || config.hourlyLimit,
-		dailyLimit: user?.dailyUploadLimit || config.dailyLimit
+		const config = getConfig();
+
+		return {
+			hourlyLimit: user?.hourlyUploadLimit || config.hourlyLimit,
+			dailyLimit: user?.dailyUploadLimit || config.dailyLimit,
+			displayName: "receipt uploads"
+		};
+	}
+
+	// For other endpoints, use configured defaults
+	return endpointConfig || {
+		hourlyLimit: 100,
+		dailyLimit: 1000,
+		displayName: "requests"
 	};
 };
 
@@ -57,16 +89,16 @@ export const checkRateLimit = async (
 		return { allowed: true };
 	}
 
-	const limits = await getUserLimits(userId);
+	const limits = await getUserLimits(userId, endpoint);
 
 	// Check hourly limit
-	const hourly = await checkWindowLimit(userId, "hourly", limits.hourlyLimit, endpoint);
+	const hourly = await checkWindowLimit(userId, "hourly", limits.hourlyLimit, endpoint, limits.displayName);
 	if (!hourly.allowed) {
 		return hourly;
 	}
 
 	// Check daily limit
-	const daily = await checkWindowLimit(userId, "daily", limits.dailyLimit, endpoint);
+	const daily = await checkWindowLimit(userId, "daily", limits.dailyLimit, endpoint, limits.displayName);
 	if (!daily.allowed) {
 		return daily;
 	}
@@ -78,16 +110,18 @@ const checkWindowLimit = async (
 	userId: string,
 	limitType: "hourly" | "daily",
 	maxRequests: number,
-	endpoint: string
+	endpoint: string,
+	displayName: string
 ) => {
 	const { windowStart, windowEnd } = getTimeWindow(limitType);
 
 	let rateLimitRecord = await prisma.userRateLimit.findUnique({
 		where: {
-			userId_limitType_windowStart: {
+			userId_limitType_windowStart_endpointPath: {
 				userId,
 				limitType,
-				windowStart
+				windowStart,
+				endpointPath: endpoint
 			}
 		}
 	});
@@ -112,7 +146,7 @@ const checkWindowLimit = async (
 			limit: maxRequests,
 			remaining: 0,
 			resetAt: windowEnd,
-			error: `Rate limit exceeded. You can upload ${maxRequests} receipts per ${limitType === "hourly" ? "hour" : "day"}. Limit resets at ${windowEnd.toISOString()}.`
+			error: `Rate limit exceeded. You can send ${maxRequests} ${displayName} per ${limitType === "hourly" ? "hour" : "day"}. Limit resets at ${windowEnd.toISOString()}.`
 		};
 	}
 
@@ -131,17 +165,18 @@ export const incrementRateLimit = async (
 	const config = getConfig();
 	if (!config.enabled) return;
 
-	const limits = await getUserLimits(userId);
+	const limits = await getUserLimits(userId, endpoint);
 
 	for (const limitType of ["hourly", "daily"] as const) {
 		const { windowStart, windowEnd } = getTimeWindow(limitType);
 
 		await prisma.userRateLimit.upsert({
 			where: {
-				userId_limitType_windowStart: {
+				userId_limitType_windowStart_endpointPath: {
 					userId,
 					limitType,
-					windowStart
+					windowStart,
+					endpointPath: endpoint
 				}
 			},
 			update: {
