@@ -3,8 +3,7 @@ import { countTokensForText } from "../utils/tokenCounter";
 import { trackLLMCall } from "./costTracking.service";
 
 const embeddingModel = new OpenAIEmbeddings({
-	model: "text-embedding-3-small",
-	dimensions: 1536,
+	model: "text-embedding-ada-002",
 });
 
 export const generateEmbedding = async (
@@ -21,7 +20,7 @@ export const generateEmbedding = async (
 				sessionId,
 				"embedding",
 				"openai",
-				"text-embedding-3-small",
+				"text-embedding-ada-002",
 				inputTokens,
 				0
 			).catch((error) => {
@@ -53,7 +52,7 @@ export const generateEmbeddings = async (
 				sessionId,
 				"embedding",
 				"openai",
-				"text-embedding-3-small",
+				"text-embedding-ada-002",
 				totalInputTokens,
 				0
 			).catch((error) => {

@@ -24,6 +24,7 @@ import { countTokensForMessages, extractTokenUsageFromResponse, estimateOutputTo
 import { trackLLMCall, initializeSession } from "./costTracking.service";
 import { completeClarificationSession } from "./clarification.service";
 import { ProgressCallback } from "../types/progress.types";
+import { ensureTransactionReference } from "../utils/transactionReferenceGenerator";
 
 export const initiateSequentialProcessing = async (
 	receiptId: string,
@@ -692,6 +693,7 @@ interface TransactionEdit {
 	description?: string;
 	transactionDate?: string;
 	paymentMethod?: string;
+	transactionType?: string;
 }
 
 export const approveSequentialTransaction = async (
@@ -780,7 +782,7 @@ export const approveSequentialTransaction = async (
 		);
 	}
 
-	const transactionType = txData.transaction_type.toUpperCase();
+	const transactionType = (edits?.transactionType || txData.transaction_type).toUpperCase();
 	const validTypes = [
 		"INCOME",
 		"EXPENSE",
@@ -797,6 +799,9 @@ export const approveSequentialTransaction = async (
 			"approveSequentialTransaction"
 		);
 	}
+
+	// Ensure transaction reference exists or generate one
+	const finalReferenceNumber = ensureTransactionReference(txData.transaction_reference);
 
 	const transaction = await prisma.transaction.create({
 		data: {
@@ -817,7 +822,7 @@ export const approveSequentialTransaction = async (
 			isSelfTransaction: enrichment?.is_self_transaction || false,
 			description: edits?.description || txData.description || undefined,
 			paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
-			referenceNumber: txData.transaction_reference || undefined,
+			referenceNumber: finalReferenceNumber,
 			aiConfidence: transactionItem.confidence_score,
 			status: "CONFIRMED" as any,
 		},
@@ -852,7 +857,7 @@ export const approveSequentialTransaction = async (
 		categoryName: transaction.category?.name,
 		transactionDate: parsedDate,
 		paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
-		referenceNumber: txData.transaction_reference || undefined,
+		referenceNumber: finalReferenceNumber,
 		isSelfTransaction: enrichment?.is_self_transaction || false,
 		userBankAccountName: transaction.userBankAccount?.accountName,
 		toBankAccountName: transaction.toBankAccount?.accountName,
@@ -886,10 +891,10 @@ export const approveSequentialTransaction = async (
 	const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
 
 	let nextTransaction: BatchTransactionInitiationItem | null = null;
-	if (!isComplete) {
+	if (!isComplete && nextIndex < transactionResults.length) {
 		const next = transactionResults[nextIndex];
 
-		if (next.is_complete === "false" && !next.clarification_session_id) {
+		if (next && next.is_complete === "false" && !next.clarification_session_id) {
 			const clarificationSession = await prisma.clarificationSession.create({
 				data: {
 					receiptId: batchSession.receiptId,
@@ -1025,10 +1030,10 @@ export const skipSequentialTransaction = async (
 	const isComplete = nextIndex >= transactionResults.length && !hasUnprocessedOrSkippedTransactions;
 
 	let nextTransaction: BatchTransactionInitiationItem | null = null;
-	if (!isComplete) {
+	if (!isComplete && nextIndex < transactionResults.length) {
 		const next = transactionResults[nextIndex];
 
-		if (next.is_complete === "false" && !next.clarification_session_id) {
+		if (next && next.is_complete === "false" && !next.clarification_session_id) {
 			const clarificationSession = await prisma.clarificationSession.create({
 				data: {
 					receiptId: batchSession.receiptId,

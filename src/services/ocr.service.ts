@@ -108,7 +108,7 @@ export const parsePDFText = async(pdfInput: Buffer | string) => {
 }
 
 const SCANNED_PDF_THRESHOLD = 50;
-const MAX_PDF_PAGES = 10;
+const MAX_PDF_PAGES = 15;
 const PDF_PARSE_TIMEOUT = 30000;
 
 type PDFExtractionResult = {

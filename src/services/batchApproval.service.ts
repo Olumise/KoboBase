@@ -14,6 +14,7 @@ interface TransactionEdit {
 	description?: string;
 	transactionDate?: string;
 	paymentMethod?: string;
+	transactionType?: string;
 }
 
 interface TransactionApproval {
@@ -87,7 +88,7 @@ export const approveBatchTransactions = async (
 				continue;
 			}
 
-			const transactionType = txData.transaction_type.toUpperCase();
+			const transactionType = (edits?.transactionType || txData.transaction_type).toUpperCase();
 			const validTypes = ["INCOME", "EXPENSE", "TRANSFER", "REFUND", "FEE", "ADJUSTMENT"];
 
 			if (!validTypes.includes(transactionType)) {

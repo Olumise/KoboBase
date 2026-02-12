@@ -30,7 +30,7 @@ const CORE_FIELD_RULES = `You are a transaction data validator and extractor. Ex
 | receiver_bank | string | Receiving bank | Extract if available, empty string "" if not |
 | receiver_account_number | string | Destination account | Extract if available, empty string "" if not |
 | time_sent | string | ISO 8601 format | Parse from OCR |
-| status | enum | successful/pending/failed | Based on receipt | Treat all receipts as successful, except the user specifies its not or you see it in the receipt that it is not.
+| status | enum | successful/pending/failed | FIRST check receipt text for status keywords ("pending", "failed", "reversed"). If none found, default to "successful". |
 | transaction_reference | string | Unique transaction ID | From receipt, or "MISSING" to auto-generate |
 | raw_input | string | Original OCR text | Preserve exactly |
 | summary | string | Detailed summary (see SUMMARY VALIDATION below) | Must be comprehensive |
@@ -104,6 +104,13 @@ Description must answer "What was this payment for?" Min 3 chars, meaningful con
 
 **Invalid**: Generic words (payment, transfer, stuff), too short (p, tx), doesn't explain what was purchased
 **Valid**: "Bought earpiece from electronics store"
+
+**Minimum Quality Bar**: Description must contain either:
+- A merchant/person name ("Shoprite", "John", "Uber"), OR
+- A category keyword ("groceries", "transport", "lunch"), OR
+- Both (preferred: "Groceries at Shoprite")
+
+If description is just "payment", "transfer", "expense", or single letter → mark as MISSING and ask.
 
 If description is missing or invalid → mark in missing_fields, ask with structured question:
 {
