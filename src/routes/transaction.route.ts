@@ -22,7 +22,6 @@ import {
 } from "../controller/transaction.controller";
 import { initiateSequentialProcessingWithProgressController } from "../controller/sequentialProgress.controller";
 import { authVerify } from "../middlewares/authVerify";
-import { rateLimitMiddleware } from "../middlewares/rateLimit";
 
 const transactionRouter = express();
 
@@ -33,8 +32,8 @@ const transactionRouter = express();
 // transactionRouter.get("/batch/status/:receiptId", authVerify, getBatchExtractionStatusController);
 // transactionRouter.post("/batch/approve", authVerify, approveBatchTransactionsController);
 // transactionRouter.post("/batch/reject/:batchSessionId", authVerify, rejectBatchSessionController);
-transactionRouter.post("/sequential/initiate/:receiptId", authVerify, rateLimitMiddleware('transaction.sequential.initiate'), initiateSequentialProcessingController);
-transactionRouter.post("/sequential/initiate-with-progress/:receiptId", authVerify, rateLimitMiddleware('transaction.sequential.initiate'), initiateSequentialProcessingWithProgressController);
+transactionRouter.post("/sequential/initiate/:receiptId", authVerify, initiateSequentialProcessingController);
+transactionRouter.post("/sequential/initiate-with-progress/:receiptId", authVerify, initiateSequentialProcessingWithProgressController);
 transactionRouter.get("/sequential/current/:batchSessionId", authVerify, getCurrentSequentialTransactionController);
 transactionRouter.get("/sequential/:batchSessionId/transaction/:index", authVerify, goToTransactionByIndexController);
 transactionRouter.post("/sequential/approve-and-next", authVerify, approveSequentialTransactionController);

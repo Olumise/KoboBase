@@ -708,7 +708,8 @@ export const approveSequentialTransaction = async (
 	isComplete: boolean;
 }> => {
 	// Use Prisma transaction to prevent race conditions
-	return await prisma.$transaction(async (tx) => {
+
+	const result = await prisma.$transaction(async (tx) => {
 		// Lock the batch session by reading it within the transaction
 		const batchSession = await tx.batchSession.findUnique({
 			where: { id: batchSessionId },
@@ -838,42 +839,6 @@ export const approveSequentialTransaction = async (
 			},
 		});
 
-		if (transactionItem.clarification_session_id) {
-			try {
-				await completeClarificationSession(
-					transactionItem.clarification_session_id,
-					userId,
-					transaction.id
-				);
-			} catch (clarificationError) {
-				console.error("Failed to complete clarification session:", clarificationError);
-			}
-		}
-
-		// Generate AI-powered summary based on the complete transaction context
-		const summary = await generateAISummary({
-			transactionType: transactionType,
-			amount: edits?.amount || txData.amount,
-			currency: txData.currency || "NGN",
-			description: edits?.description || txData.description || undefined,
-			contactName: transaction.contact?.name,
-			categoryName: transaction.category?.name,
-			transactionDate: parsedDate,
-			paymentMethod: edits?.paymentMethod || txData.payment_method || undefined,
-			referenceNumber: finalReferenceNumber,
-			isSelfTransaction: enrichment?.is_self_transaction || false,
-			userBankAccountName: transaction.userBankAccount?.accountName,
-			toBankAccountName: transaction.toBankAccount?.accountName,
-		});
-		const embedding = await generateEmbedding(summary);
-
-		await tx.$executeRaw`
-			UPDATE transactions
-			SET summary = ${summary},
-				embedding = ${`[${embedding.join(",")}]`}::vector
-			WHERE id = ${transaction.id}
-		`;
-
 		// Mark this transaction as approved with the created transaction ID
 		transactionResults[currentIndex] = {
 			...transactionItem,
@@ -952,8 +917,77 @@ export const approveSequentialTransaction = async (
 			currentIndex: nextIndex,
 			totalTransactions: transactionResults.length,
 			isComplete,
+			// Return data needed for AI operations after transaction commits
+			transactionType,
+			parsedDate,
+			finalReferenceNumber,
+			txData,
+			enrichment,
+			// Store clarification session ID for post-transaction completion
+			clarificationSessionId: transactionItem.clarification_session_id,
 		};
+	}, {
+		timeout: 15000, // 15 second timeout (increased from default 5s)
 	}); // Close the transaction wrapper
+
+	// Post-transaction operations (no locks held, won't cause timeout)
+	// Complete clarification session if it exists
+	if (result.clarificationSessionId) {
+		try {
+			await completeClarificationSession(
+				result.clarificationSessionId,
+				userId,
+				result.createdTransaction.id
+			);
+		} catch (clarificationError) {
+			console.error("Failed to complete clarification session:", clarificationError);
+		}
+	}
+
+	// AI operations happen AFTER transaction commits (no locks held)
+	// This prevents transaction timeout while still computing summary before returning to user
+	try {
+		const summary = await generateAISummary({
+			transactionType: result.transactionType,
+			amount: edits?.amount || result.txData.amount,
+			currency: result.txData.currency || "NGN",
+			description: edits?.description || result.txData.description || undefined,
+			contactName: result.createdTransaction.contact?.name,
+			categoryName: result.createdTransaction.category?.name,
+			transactionDate: result.parsedDate,
+			paymentMethod: edits?.paymentMethod || result.txData.payment_method || undefined,
+			referenceNumber: result.finalReferenceNumber,
+			isSelfTransaction: result.enrichment?.is_self_transaction || false,
+			userBankAccountName: result.createdTransaction.userBankAccount?.accountName,
+			toBankAccountName: result.createdTransaction.toBankAccount?.accountName,
+		});
+
+		const embedding = await generateEmbedding(summary);
+
+		// Update transaction with summary and embedding
+		await prisma.$executeRaw`
+			UPDATE transactions
+			SET summary = ${summary},
+				embedding = ${`[${embedding.join(",")}]`}::vector
+			WHERE id = ${result.createdTransaction.id}
+		`;
+
+		// Update the transaction object with the summary for the response
+		result.createdTransaction.summary = summary;
+	} catch (aiError) {
+		// Log error but don't fail the entire operation
+		// Transaction is already saved, summary can be regenerated later if needed
+		console.error("Failed to generate AI summary/embedding:", aiError);
+	}
+
+	// Return the final result (clean up internal fields)
+	return {
+		createdTransaction: result.createdTransaction,
+		nextTransaction: result.nextTransaction,
+		currentIndex: result.currentIndex,
+		totalTransactions: result.totalTransactions,
+		isComplete: result.isComplete,
+	};
 };
 
 export const skipSequentialTransaction = async (

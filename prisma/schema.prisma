@@ -15,8 +15,6 @@ model User {
   image               String?
   defaultCurrency     String   @default("NGN") @map("default_currency") @db.VarChar(3)
   customContextPrompt String?  @map("custom_context_prompt") @db.VarChar(1000)
-  hourlyUploadLimit   Int?     @map("hourly_upload_limit")
-  dailyUploadLimit    Int?     @map("daily_upload_limit")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
@@ -31,7 +29,6 @@ model User {
   batchSessions         BatchSession[]
   llmUsageSessions      LLMUsageSession[]
   costMetrics           UserCostMetrics?
-  rateLimits            UserRateLimit[]
 
   @@unique([email])
   @@map("user")
@@ -172,17 +169,17 @@ model Category {
 }
 
 model Contact {
-  id                    String    @id @default(uuid())
+  id                    String   @id @default(uuid())
   name                  String
-  normalizedName        String?   @map("normalized_name")
-  ContactType           String?   @map("sender_type") @db.VarChar(20)
-  categoryId            String?   @map("category_id")
-  typicalAmountRangeMin Decimal?  @map("typical_amount_range_min") @db.Decimal(15, 2)
-  typicalAmountRangeMax Decimal?  @map("typical_amount_range_max") @db.Decimal(15, 2)
-  nameVariations        String[]  @map("name_variations")
-  notes                 String?   @db.Text
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  normalizedName        String?  @map("normalized_name")
+  ContactType           String?  @map("sender_type") @db.VarChar(20)
+  categoryId            String?  @map("category_id")
+  typicalAmountRangeMin Decimal? @map("typical_amount_range_min") @db.Decimal(15, 2)
+  typicalAmountRangeMax Decimal? @map("typical_amount_range_max") @db.Decimal(15, 2)
+  nameVariations        String[] @map("name_variations")
+  notes                 String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   defaultCategory Category?     @relation(fields: [categoryId], references: [id])
   transactions    Transaction[]
@@ -320,12 +317,12 @@ model LLMUsageSession {
   totalInputTokens       Int       @default(0) @map("total_input_tokens")
   totalOutputTokens      Int       @default(0) @map("total_output_tokens")
   totalTokens            Int       @default(0) @map("total_tokens")
-  totalCostUsd           Decimal   @default(0) @db.Decimal(10, 6) @map("total_cost_usd")
+  totalCostUsd           Decimal   @default(0) @map("total_cost_usd") @db.Decimal(10, 6)
   callBreakdown          Json?     @map("call_breakdown")
   receiptId              String?   @map("receipt_id")
-  documentType           String?   @db.VarChar(50) @map("document_type")
+  documentType           String?   @map("document_type") @db.VarChar(50)
   transactionCount       Int?      @map("transaction_count")
-  processingMode         String?   @db.VarChar(20) @map("processing_mode")
+  processingMode         String?   @map("processing_mode") @db.VarChar(20)
   startedAt              DateTime  @default(now()) @map("started_at")
   completedAt            DateTime? @map("completed_at")
   createdAt              DateTime  @default(now()) @map("created_at")
@@ -346,7 +343,7 @@ model UserCostMetrics {
   id                    String    @id @default(uuid())
   userId                String    @unique @map("user_id")
   totalTokensUsed       Int       @default(0) @map("total_tokens_used")
-  totalCostUsd          Decimal   @default(0) @db.Decimal(10, 6) @map("total_cost_usd")
+  totalCostUsd          Decimal   @default(0) @map("total_cost_usd") @db.Decimal(10, 6)
   clarificationSessions Int       @default(0) @map("clarification_sessions")
   batchSessions         Int       @default(0) @map("batch_sessions")
   sequentialSessions    Int       @default(0) @map("sequential_sessions")
@@ -358,7 +355,7 @@ model UserCostMetrics {
   embeddingCalls        Int       @default(0) @map("embedding_calls")
   chatCalls             Int       @default(0) @map("chat_calls")
   currentMonthTokens    Int       @default(0) @map("current_month_tokens")
-  currentMonthCost      Decimal   @default(0) @db.Decimal(10, 6) @map("current_month_cost")
+  currentMonthCost      Decimal   @default(0) @map("current_month_cost") @db.Decimal(10, 6)
   monthStartDate        DateTime? @map("month_start_date")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
@@ -366,26 +363,6 @@ model UserCostMetrics {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_cost_metrics")
-}
-
-model UserRateLimit {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
-  limitType    String   @map("limit_type") @db.VarChar(20)
-  windowStart  DateTime @map("window_start")
-  windowEnd    DateTime @map("window_end")
-  requestCount Int      @default(0) @map("request_count")
-  maxRequests  Int      @map("max_requests")
-  endpointPath String   @default("receipt.upload") @map("endpoint_path") @db.VarChar(100)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, limitType, windowStart, endpointPath])
-  @@index([userId, limitType, endpointPath])
-  @@index([windowEnd])
-  @@map("user_rate_limits")
 }
 
 model ChatSession {
